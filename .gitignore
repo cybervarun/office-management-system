@@ -134,3 +134,26 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+<<<<<<< HEAD
+=======
+
+# Dependency directory (Crucial to ignore for Node)
+node_modules/
+
+# Environment secrets / API keys
+.env
+.env.local
+.env.production
+
+# Build / Production outputs
+dist/
+build/
+.next/
+
+# Log files
+*.log
+npm-debug.log*
+
+# Windows system files
+Thumbs.db
+>>>>>>> c4475148cbcf8e775cb34f1ce33f28cc2be0717e
