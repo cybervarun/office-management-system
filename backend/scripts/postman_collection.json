@@ -1,0 +1,177 @@
+{
+  "info": {
+    "name": "IT Inventory Ticketing API",
+    "_postman_id": "97b8cbb6-3252-4cb6-8445-c67bf8d4e311",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "token", "value": "" },
+    { "key": "userId", "value": "1" },
+    { "key": "inventoryId", "value": "1" },
+    { "key": "ticketId", "value": "1" }
+  ],
+  "item": [
+    {
+      "name": "Auth - Login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\":\"admin@example.com\",\"password\":\"Admin@1234\"}"
+        }
+      }
+    },
+    {
+      "name": "Users - Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": "{{baseUrl}}/api/users",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\":\"Help Desk User\",\"email\":\"helpdesk@example.com\",\"phone\":\"9999999999\",\"role\":\"Help Desk\",\"password\":\"Admin@1234\"}"
+        }
+      }
+    },
+    {
+      "name": "Users - Search",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/api/users/search?q=help"
+      }
+    },
+    {
+      "name": "Users - Edit Role",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": "{{baseUrl}}/api/users/{{userId}}/role",
+        "body": { "mode": "raw", "raw": "{\"role\":\"IT Team\"}" }
+      }
+    },
+    {
+      "name": "Users - Update Password",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": "{{baseUrl}}/api/users/{{userId}}/password",
+        "body": { "mode": "raw", "raw": "{\"password\":\"NewPass@123\"}" }
+      }
+    },
+    {
+      "name": "Users - Deactivate",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/api/users/{{userId}}/deactivate"
+      }
+    },
+    {
+      "name": "Inventory - Add",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": "{{baseUrl}}/api/inventory",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"ministry\":\"MeitY\",\"department\":\"IT Division\",\"block_name\":\"A\",\"floor\":\"1\",\"room\":\"101\",\"workstation\":\"WS-1\",\"asset_user\":\"John Doe\",\"division\":\"Operations\",\"designation\":\"Officer\",\"email\":\"john.doe@example.com\",\"phone\":\"8888888888\",\"custodian\":\"IT Support\"}"
+        }
+      }
+    },
+    {
+      "name": "Inventory - Search User",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/api/inventory/search-user?q=john"
+      }
+    },
+    {
+      "name": "Tickets - Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": "{{baseUrl}}/api/tickets",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"title\":\"Printer not working\",\"description\":\"Paper jam and driver error\",\"inventory_id\":{{inventoryId}}}"
+        }
+      }
+    },
+    {
+      "name": "Tickets - Assign Team",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": "{{baseUrl}}/api/tickets/{{ticketId}}/assign",
+        "body": { "mode": "raw", "raw": "{\"toTeam\":\"IT Team\",\"note\":\"Assigning to IT Team\"}" }
+      }
+    },
+    {
+      "name": "Tickets - Transfer",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": "{{baseUrl}}/api/tickets/transfer",
+        "body": { "mode": "raw", "raw": "{\"ticketId\":{{ticketId}},\"toTeam\":\"Network Team\",\"note\":\"Escalating to network\"}" }
+      }
+    },
+    {
+      "name": "Tickets - Update Status",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": "{{baseUrl}}/api/tickets/{{ticketId}}/status",
+        "body": { "mode": "raw", "raw": "{\"status\":\"In Progress\"}" }
+      }
+    },
+    {
+      "name": "Tickets - Add Work Notes",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": "{{baseUrl}}/api/tickets/{{ticketId}}/work-notes",
+        "body": { "mode": "raw", "raw": "{\"workNotes\":\"Checked logs and replaced cable\"}" }
+      }
+    },
+    {
+      "name": "Tickets - Full Details",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/api/tickets/{{ticketId}}"
+      }
+    }
+  ]
+}
