@@ -92,7 +92,7 @@ Phase 1–4 of the documentation cleanup, organization, and PostgreSQL migration
 
 ### Commits
 1. `09e0891` — Docs: Consolidate documentation, remove obsolete MSSQL-era files, create root README.md
-2. (pending) — Project: Organize structure, move constants, remove old MSSQL schema, align docs
+2. `46ff7ad` — Project: Organize structure, move constants, remove MSSQL schema.sql, align docs
 
 ---
 
