@@ -1,4 +1,4 @@
-const { executeQuery, sql } = require("../config/db");
+const { executeQuery } = require("../config/db");
 const ApiError = require("../utils/ApiError");
 const crypto = require("crypto");
 
@@ -24,19 +24,17 @@ const allFields = [
 const generateAssetId = (serial, mac) => {
   const source = (serial || mac || "").trim();
   if (!source) throw new Error("Cannot generate Asset ID without serial_number or mac_address");
-  const hash = crypto.createHash("sha256").update(source).digest("hex").slice(0, 12).toUpperCase();
-  return `ASSET-${hash}`;
+  const hash = crypto.createHash("sha256").update(source).digest("hex").slice(0, 8);
+  return hash;
 };
 
 const findExistingByHardware = async (serial, mac) => {
   const result = await executeQuery(
-    `SELECT TOP 1 * FROM inventory WHERE (serial_number IS NOT NULL AND serial_number = @serial) OR (mac_address IS NOT NULL AND mac_address = @mac)`,
-    [
-      { name: "serial", type: sql.NVarChar(200), value: serial || null },
-      { name: "mac", type: sql.NVarChar(50), value: mac || null }
-    ]
+    `SELECT * FROM inventory WHERE (serial_number IS NOT NULL AND serial_number = $1) OR (mac_address IS NOT NULL AND mac_address = $2)
+     LIMIT 1`,
+    [serial || null, mac || null]
   );
-  return result.recordset[0];
+  return result.rows[0];
 };
 
 // Columns that are NOT NULL in the database and need defaults when absent from payload
@@ -55,24 +53,17 @@ const buildInsertQuery = (payload) => {
       enrichedPayload[field] = defaultValue;
     }
   }
-  const fieldNames = allFields.filter(f => enrichedPayload.hasOwnProperty(f));
-  const placeholders = fieldNames.map(f => `@${f}`).join(", ");
+  const fieldNames = allFields.filter((f) => enrichedPayload.hasOwnProperty(f));
+  const placeholders = fieldNames.map((_, i) => `$${i + 1}`).join(", ");
   const columns = fieldNames.join(", ");
-
-  const intFields = ["sr_no"];
-  const parameters = fieldNames.map(field => {
-    const isDate = dateFields.includes(field);
-    const isInt = intFields.includes(field);
-    return {
-      name: field,
-      type: isInt ? sql.Int : isDate ? sql.Date : sql.NVarChar(sql.MAX),
-      value: enrichedPayload[field] === undefined ? null : (isInt ? Number(enrichedPayload[field]) : enrichedPayload[field])
-    };
+  const values = fieldNames.map((field) => {
+    const val = enrichedPayload[field];
+    return val === undefined ? null : val;
   });
 
   return {
-    query: `INSERT INTO inventory (${columns}) OUTPUT INSERTED.* VALUES (${placeholders})`,
-    parameters
+    query: `INSERT INTO inventory (${columns}) RETURNING * VALUES (${placeholders})`,
+    parameters: values
   };
 };
 
@@ -80,24 +71,20 @@ const buildUpdateQuery = (id, payload) => {
   // Prevent changing asset_id via update (immutable)
   const payloadSafe = { ...payload };
   delete payloadSafe.asset_id;
-  const fieldNames = allFields.filter(f => Object.prototype.hasOwnProperty.call(payloadSafe, f));
-  const setClauses = fieldNames.map(f => `${f}=@${f}`).join(", ");
+  const fieldNames = allFields.filter((f) => Object.prototype.hasOwnProperty.call(payloadSafe, f));
+  const setClauses = fieldNames.map((f, i) => `${f} = $${i + 2}`).join(", ");
 
-  const parameters = [
-    { name: "id", type: sql.Int, value: Number(id) },
-    ...fieldNames.map(field => {
-      const isInt = field === "sr_no";
-      return {
-        name: field,
-        type: isInt ? sql.Int : dateFields.includes(field) ? sql.Date : sql.NVarChar(sql.MAX),
-        value: payloadSafe[field] === undefined ? null : (isInt ? Number(payloadSafe[field]) : payloadSafe[field])
-      };
+  const values = [
+    Number(id),
+    ...fieldNames.map((field) => {
+      const val = payloadSafe[field];
+      return val === undefined ? null : val;
     })
   ];
 
   return {
-    query: `UPDATE inventory SET ${setClauses}, updated_at=SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id = @id`,
-    parameters
+    query: `UPDATE inventory SET ${setClauses}, updated_at = NOW() RETURNING * WHERE id = $1`,
+    parameters: values
   };
 };
 
@@ -124,8 +111,8 @@ const addAsset = async (payload) => {
   // Insert record
   const { query, parameters } = buildInsertQuery(payload);
   const result = await executeQuery(query, parameters);
-  if (!result.recordset[0]) throw new ApiError(500, "Failed to insert asset");
-  return { existing: false, asset: result.recordset[0] };
+  if (!result.rows[0]) throw new ApiError(500, "Failed to insert asset");
+  return { existing: false, asset: result.rows[0] };
 };
 
 const editAsset = async (id, payload) => {
@@ -135,20 +122,17 @@ const editAsset = async (id, payload) => {
   // If serial_number or mac_address changed, ensure uniqueness (no other record uses them)
   if (payload.serial_number || payload.mac_address) {
     const check = await executeQuery(
-      `SELECT TOP 1 * FROM inventory WHERE id <> @id AND ((serial_number IS NOT NULL AND serial_number = @serial) OR (mac_address IS NOT NULL AND mac_address = @mac))`,
-      [
-        { name: "id", type: sql.Int, value: Number(id) },
-        { name: "serial", type: sql.NVarChar(200), value: payload.serial_number || null },
-        { name: "mac", type: sql.NVarChar(50), value: payload.mac_address || null }
-      ]
+      `SELECT * FROM inventory WHERE id <> $1 AND ((serial_number IS NOT NULL AND serial_number = $2) OR (mac_address IS NOT NULL AND mac_address = $3))
+       LIMIT 1`,
+      [Number(id), payload.serial_number || null, payload.mac_address || null]
     );
-    if (check.recordset.length) throw new ApiError(409, "serial_number or mac_address already bound to another asset");
+    if (check.rows.length) throw new ApiError(409, "serial_number or mac_address already bound to another asset");
   }
 
   const { query, parameters } = buildUpdateQuery(id, payload);
   const result = await executeQuery(query, parameters);
-  if (!result.recordset[0]) throw new ApiError(404, "Inventory record not found");
-  return result.recordset[0];
+  if (!result.rows[0]) throw new ApiError(404, "Inventory record not found");
+  return result.rows[0];
 };
 
 const ALLOWED_INVENTORY_SORT_COLUMNS = [
@@ -163,152 +147,193 @@ const ALLOWED_INVENTORY_SORT_COLUMNS = [
 const listAssets = async (pagination, filters = {}) => {
   const conditions = [];
   const params = [];
-  let paramIndex = 0;
 
   // Build WHERE conditions from filters
-  const addCondition = (sql, value, type) => {
+  const addCondition = (sqlClause, value) => {
     if (value === undefined || value === null || value === "") return;
-    const paramName = `p${paramIndex++}`;
-    conditions.push(sql.replace("@p", `@${paramName}`));
-    params.push({ name: paramName, type, value });
+    conditions.push(sqlClause);
+    params.push(value);
   };
 
-  addCondition("asset_user LIKE @p", filters.search ? `%${filters.search}%` : null, sql.NVarChar(255));
-  addCondition("email LIKE @p", filters.search ? `%${filters.search}%` : null, sql.NVarChar(255));
-  addCondition("phone LIKE @p", filters.search ? `%${filters.search}%` : null, sql.NVarChar(30));
+  addCondition("asset_user LIKE $1", filters.search ? `%${filters.search}%` : null);
+  addCondition("email LIKE $1", filters.search ? `%${filters.search}%` : null);
+  addCondition("phone LIKE $1", filters.search ? `%${filters.search}%` : null);
 
-  addCondition("ministry = @p", filters.ministry, sql.NVarChar(200));
-  addCondition("department = @p", filters.department, sql.NVarChar(200));
-  addCondition("asset_category = @p", filters.asset_category, sql.NVarChar(100));
-  addCondition("asset_current_status = @p", filters.asset_current_status, sql.NVarChar(100));
-  addCondition("edr_installed = @p", filters.edr_installed, sql.NVarChar(10));
-  addCondition("uem_installed = @p", filters.uem_installed, sql.NVarChar(10));
+  addCondition("ministry = $1", filters.ministry);
+  addCondition("department = $1", filters.department);
+  addCondition("asset_category = $1", filters.asset_category);
+  addCondition("asset_current_status = $1", filters.asset_current_status);
+  addCondition("edr_installed = $1", filters.edr_installed);
+  addCondition("uem_installed = $1", filters.uem_installed);
 
   // Search across multiple fields (if user provided a search term)
-  let searchClause = "";
   if (filters.search && filters.search.trim()) {
     const searchTerm = `%${filters.search.trim()}%`;
-    // Combine multiple LIKE conditions with OR for search
     const searchFields = [
       "asset_user", "email", "phone", "department",
       "workstation", "asset_id", "asset_category",
       "asset_description", "serial_number", "block_name",
       "asset_custodian"
     ];
-    const searchConditions = searchFields.map(f => `${f} LIKE @searchTerm`).join(" OR ");
-    // Remove individual LIKE params we added for search, use combined OR instead
-    // Keep only the first 3 params (search) and replace with combined OR
-    // Actually, let's just clear and rebuild more cleanly
+    const searchConditions = searchFields.map((f) => `${f} LIKE $1`).join(" OR ");
+    // Clear and rebuild cleanly
     conditions.length = 0;
     params.length = 0;
-    paramIndex = 0;
 
     // Re-add non-search filters
-    addCondition("ministry = @p", filters.ministry, sql.NVarChar(200));
-    addCondition("department = @p", filters.department, sql.NVarChar(200));
-    addCondition("asset_category = @p", filters.asset_category, sql.NVarChar(100));
-    addCondition("asset_current_status = @p", filters.asset_current_status, sql.NVarChar(100));
-    addCondition("edr_installed = @p", filters.edr_installed, sql.NVarChar(10));
-    addCondition("uem_installed = @p", filters.uem_installed, sql.NVarChar(10));
+    addCondition("ministry = $1", filters.ministry);
+    addCondition("department = $1", filters.department);
+    addCondition("asset_category = $1", filters.asset_category);
+    addCondition("asset_current_status = $1", filters.asset_current_status);
+    addCondition("edr_installed = $1", filters.edr_installed);
+    addCondition("uem_installed = $1", filters.uem_installed);
 
     // Add search condition
     conditions.push(`(${searchConditions})`);
-    params.push({ name: "searchTerm", type: sql.NVarChar(255), value: searchTerm });
+    params.push(searchTerm);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-  const sortBy = pagination.sortBy && ALLOWED_INVENTORY_SORT_COLUMNS.includes(pagination.sortBy)
-    ? pagination.sortBy
-    : "created_at";
+  const sortBy =
+    pagination.sortBy && ALLOWED_INVENTORY_SORT_COLUMNS.includes(pagination.sortBy)
+      ? pagination.sortBy
+      : "created_at";
   const orderClause = `ORDER BY ${sortBy} ${pagination.sortDirection}`;
 
+  // Separate count query for total
+  const countQuery = `SELECT COUNT(*) AS total FROM inventory ${whereClause}`;
+  const countResult = await executeQuery(countQuery, params.slice(0, -2));
+  const total = parseInt(countResult.rows[0]?.total || 0, 10);
+
   const query = `
-    SELECT *, COUNT(*) OVER() AS _totalCount
-    FROM inventory
+    SELECT * FROM inventory
     ${whereClause}
     ${orderClause}
-    OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
   `;
 
-  const allParams = [
-    ...params,
-    { name: "offset", type: sql.Int, value: pagination.offset },
-    { name: "pageSize", type: sql.Int, value: pagination.pageSize }
-  ];
-
+  const allParams = [...params, pagination.pageSize, pagination.offset];
   const result = await executeQuery(query, allParams);
-  const records = result.recordset;
-  const total = records.length > 0 ? records[0]._totalCount : 0;
-
-  // Remove the _totalCount meta-field from each record before returning
-  const data = records.map(({ _totalCount, ...rest }) => rest);
-  return { data, total };
+  return { data: result.rows, total };
 };
 
 const getDropdownValues = async () => {
   const response = {};
 
-  // Columns pulled from inventory + lookup_values (UNION deduplicates across sources)
   const compositeFields = [
     "ministry", "department", "asset_category", "operating_system",
     "network_connection_type", "asset_current_status", "amc_warranty", "critical",
     "edr_installed", "uem_installed"
   ];
 
-  // Columns pulled from inventory only
   const simpleFields = ["asset_user", "asset_custodian", "division"];
 
   const parts = [];
   for (const field of compositeFields) {
-    parts.push(`SELECT N'${field}' AS f, ${field} AS v FROM inventory WHERE ${field} IS NOT NULL AND ${field} <> ''`);
-    parts.push(`SELECT N'${field}' AS f, name AS v FROM lookup_values WHERE lookup_type = N'${field}'`);
+    // Use safe string interpolation for column/table names (hardcoded allowlist)
+    parts.push(
+      `SELECT $1::text AS f, ${field} AS v FROM inventory WHERE ${field} IS NOT NULL AND ${field} <> ''`
+    );
+    parts.push(
+      `SELECT $1::text AS f, name AS v FROM lookup_values WHERE lookup_type = $1`
+    );
   }
   for (const field of simpleFields) {
-    parts.push(`SELECT N'${field}' AS f, ${field} AS v FROM inventory WHERE ${field} IS NOT NULL AND ${field} <> ''`);
+    parts.push(
+      `SELECT $1::text AS f, ${field} AS v FROM inventory WHERE ${field} IS NOT NULL AND ${field} <> ''`
+    );
   }
 
-  const rows = await executeQuery(parts.join(" UNION ALL "));
+  // Execute each part separately for safety (dynamic column names from allowlist are safe)
   const grouped = {};
-  for (const row of rows.recordset) {
-    const key = row.f;
-    const val = row.v;
-    if (!grouped[key]) grouped[key] = new Set();
-    if (val !== null && val !== undefined && val !== "") grouped[key].add(val);
+  for (const field of [...compositeFields, ...simpleFields]) {
+    const fromInv = await executeQuery(
+      `SELECT ${field} AS v FROM inventory WHERE ${field} IS NOT NULL AND ${field} <> ''`,
+      []
+    );
+    const fromLookup = await executeQuery(
+      `SELECT name AS v FROM lookup_values WHERE lookup_type = $1`,
+      [field]
+    );
+    const combined = [...fromInv.rows, ...fromLookup.rows];
+    const values = new Set();
+    for (const row of combined) {
+      const val = row.v;
+      if (val !== null && val !== undefined && val !== "") {
+        values.add(val);
+      }
+    }
+    grouped[field] = [...values].sort();
   }
 
-  for (const key of Object.keys(grouped)) {
-    response[key] = [...grouped[key]].sort();
-  }
-  return response;
+  return grouped;
 };
 
 const searchUserInventory = async (q) => {
   const like = `%${q}%`;
   const result = await executeQuery(
-    `SELECT TOP 25 * FROM inventory
-     WHERE asset_user LIKE @q OR email LIKE @q OR phone LIKE @q
-     ORDER BY updated_at DESC`,
-    [{ name: "q", type: sql.NVarChar(255), value: like }]
+    `SELECT * FROM inventory
+     WHERE asset_user LIKE $1 OR email LIKE $1 OR phone LIKE $1
+     ORDER BY updated_at DESC
+     LIMIT 25`,
+    [like]
   );
-  return result.recordset;
+  return result.rows;
 };
 
 const getAssetById = async (id) => {
   const result = await executeQuery(
-    `SELECT * FROM inventory WHERE id = @id`,
-    [{ name: "id", type: sql.Int, value: Number(id) }]
+    `SELECT * FROM inventory WHERE id = $1`,
+    [Number(id)]
   );
-  if (!result.recordset[0]) throw new ApiError(404, "Inventory record not found");
-  return result.recordset[0];
+  if (!result.rows[0]) throw new ApiError(404, "Inventory record not found");
+  return result.rows[0];
 };
 
 const deleteAsset = async (id) => {
   const asset = await getAssetById(id);
   await executeQuery(
-    `DELETE FROM inventory WHERE id = @id`,
-    [{ name: "id", type: sql.Int, value: Number(id) }]
+    `DELETE FROM inventory WHERE id = $1`,
+    [Number(id)]
   );
   return asset;
+};
+
+const addDropdownValue = async (field, value) => {
+  const allowedFields = [
+    "ministry", "department", "asset_category", "operating_system",
+    "network_connection_type"
+  ];
+
+  if (!allowedFields.includes(field)) {
+    throw new ApiError(400, `Unsupported dropdown field: ${field}`);
+  }
+
+  const normalizedValue = String(value).trim();
+  const normalizedCode = String(value)
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^A-Z0-9_]/g, "_")
+    .slice(0, 50);
+
+  const existing = await executeQuery(
+    `SELECT id, name AS value, code FROM lookup_values WHERE lookup_type = $1 AND name = $2
+     LIMIT 1`,
+    [field, normalizedValue]
+  );
+
+  if (existing.rows.length) {
+    return existing.rows[0];
+  }
+
+  const result = await executeQuery(
+    `INSERT INTO lookup_values (lookup_type, name, code) RETURNING id, name AS value, code
+     VALUES ($1, $2, $3)`,
+    [field, normalizedValue, normalizedCode]
+  );
+
+  return result.rows[0];
 };
 
 module.exports = {
@@ -318,5 +343,6 @@ module.exports = {
   listAssets,
   getAssetById,
   getDropdownValues,
-  searchUserInventory
+  searchUserInventory,
+  addDropdownValue
 };

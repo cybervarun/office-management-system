@@ -1,14 +1,14 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { executeQuery, sql } = require("../config/db");
+const { executeQuery } = require("../config/db");
 const ApiError = require("../utils/ApiError");
 
 const login = async (email, password) => {
   const result = await executeQuery(
-    "SELECT id, name, email, role, password_hash, is_active FROM users WHERE email = @email",
-    [{ name: "email", type: sql.NVarChar(255), value: email }]
+    "SELECT id, name, email, role, password_hash, is_active FROM users WHERE email = $1",
+    [email]
   );
-  const user = result.recordset[0];
+  const user = result.rows[0];
   if (!user) throw new ApiError(401, "Invalid credentials");
   if (!user.is_active) throw new ApiError(403, "User is inactive");
 

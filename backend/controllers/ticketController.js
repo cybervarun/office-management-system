@@ -1,7 +1,12 @@
 const asyncHandler = require("../utils/asyncHandler");
 const ticketService = require("../services/ticketService");
-const { executeQuery, sql } = require("../config/db");
 const { parsePagination, paginatedResponse } = require("../utils/pagination");
+
+const searchUsers = asyncHandler(async (req, res) => {
+  const q = req.query.q || "";
+  const result = await ticketService.searchUsers(q);
+  res.json(result);
+});
 
 const createTicket = asyncHandler(async (req, res) => {
   const ticket = await ticketService.createTicket(req.body, req.user.id);
@@ -42,22 +47,6 @@ const updateStatus = asyncHandler(async (req, res) => {
 const addWorkNotes = asyncHandler(async (req, res) => {
   const ticket = await ticketService.addWorkNotes(req.params.id, req.body.workNotes, req.user.id);
   res.json(ticket);
-});
-
-const searchUsers = asyncHandler(async (req, res) => {
-  const q = req.query.q || "";
-  if (!q.trim()) {
-    return res.json([]);
-  }
-  const pattern = `%${q}%`;
-  const result = await executeQuery(
-    `SELECT TOP 10 i.id, i.asset_user, i.email, i.phone
-     FROM inventory i
-     WHERE i.asset_user LIKE @pattern OR i.email LIKE @pattern OR i.phone LIKE @pattern
-     ORDER BY i.asset_user`,
-    [{ name: "pattern", type: sql.NVarChar(255), value: pattern }]
-  );
-  res.json(result.recordset || []);
 });
 
 const deleteTicket = asyncHandler(async (req, res) => {

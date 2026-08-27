@@ -1,11 +1,10 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { executeQuery, sql } = require('../config/db');
+const { executeQuery } = require('../config/db');
 
 const RESET_MODE = process.argv.includes('--reset');
 
 const generateOneTimePassword = () => {
-  // 16 bytes → 22-char base64url, easy to copy, hard to brute-force offline.
   return crypto.randomBytes(16).toString('base64url');
 };
 
@@ -15,10 +14,6 @@ const generateOneTimePassword = () => {
     const name = process.env.ADMIN_NAME || 'Administrator';
     const role = process.env.ADMIN_ROLE || 'Admin';
 
-    // Resolve the password. Three rules:
-    //   1) --reset flag: always generate a one-time password and print only its fingerprint.
-    //   2) ADMIN_PASSWORD env var explicitly set: use it, but never echo it back.
-    //   3) Neither: refuse to run. Forces the operator to make a conscious choice.
     let password;
     let shouldPrintOtp = false;
 
@@ -41,43 +36,30 @@ const generateOneTimePassword = () => {
     }
 
     const exists = await executeQuery(
-      'SELECT id FROM users WHERE email = @email',
-      [{ name: 'email', type: sql.NVarChar(255), value: email }]
+      'SELECT id FROM users WHERE email = $1',
+      [email]
     );
 
     const hash = await bcrypt.hash(password, 12);
     const fingerprint = crypto.createHash('sha256').update(password).digest('hex').slice(0, 8);
 
-    if (exists.recordset[0]) {
-      const id = exists.recordset[0].id;
+    if (exists.rows[0]) {
+      const id = exists.rows[0].id;
       await executeQuery(
-        'UPDATE users SET password_hash = @password_hash, role = @role, name = @name, is_active = 1, updated_at = SYSUTCDATETIME() WHERE id = @id',
-        [
-          { name: 'id', type: sql.Int, value: id },
-          { name: 'password_hash', type: sql.NVarChar(255), value: hash },
-          { name: 'role', type: sql.NVarChar(50), value: role },
-          { name: 'name', type: sql.NVarChar(255), value: name }
-        ]
+        'UPDATE users SET password_hash = $1, role = $2, name = $3, is_active = true, updated_at = NOW() WHERE id = $4',
+        [hash, role, name, id]
       );
       console.log(`[create_admin] Updated existing admin (${email}) — password fingerprint: ${fingerprint}`);
     } else {
       await executeQuery(
         `INSERT INTO users (name, email, phone, role, password_hash, is_active)
-         VALUES (@name, @email, NULL, @role, @password_hash, 1)`,
-        [
-          { name: 'name', type: sql.NVarChar(255), value: name },
-          { name: 'email', type: sql.NVarChar(255), value: email },
-          { name: 'role', type: sql.NVarChar(50), value: role },
-          { name: 'password_hash', type: sql.NVarChar(255), value: hash }
-        ]
+         VALUES ($1, $2, NULL, $3, $4, true)`,
+        [name, email, role, hash]
       );
       console.log(`[create_admin] Created admin user ${email} — password fingerprint: ${fingerprint}`);
     }
 
     if (shouldPrintOtp) {
-      // The full password is only ever printed once, in --reset mode,
-      // and is intended to be captured into a one-time-delivery channel
-      // (e.g. handed to the operator to set on first login).
       console.log(`[create_admin] ONE-TIME PASSWORD (deliver securely, do not commit): ${password}`);
     } else {
       console.log('[create_admin] Password was supplied via env var and was not printed to stdout.');

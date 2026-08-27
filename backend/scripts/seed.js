@@ -1,4 +1,3 @@
-const sql = require('mssql');
 const { executeQuery } = require('../config/db');
 
 async function seed() {
@@ -66,18 +65,14 @@ async function seed() {
   for (const [field, name, code] of dropdowns) {
     try {
       await executeQuery(
-        'INSERT INTO lookup_values (lookup_type, name, code) VALUES (@field, @name, @code)',
-        [
-          { name: 'field', type: sql.NVarChar(100), value: field },
-          { name: 'name', type: sql.NVarChar(255), value: name },
-          { name: 'code', type: sql.NVarChar(100), value: code },
-        ]
+        'INSERT INTO lookup_values (lookup_type, name, code) VALUES ($1, $2, $3)',
+        [field, name, code]
       );
     } catch (e) { /* ignore duplicates */ }
   }
 
-  const ddCount = await executeQuery('SELECT COUNT(*) as cnt FROM lookup_values');
-  console.log('Dropdown values:', ddCount.recordset[0].cnt);
+  const ddCount = await executeQuery('SELECT COUNT(*) AS cnt FROM lookup_values');
+  console.log('Dropdown values:', ddCount.rows[0]?.cnt);
 
   // Seed inventory
   const invCols = 'sr_no,ministry,department,mdo_location,division,asset_id,asset_category,other_asset_category,serial_number,block_name,floor,room,workstation,asset_description,make_brand_model,purchase_date,operating_system,other_operating_system,ip_address,mac_address,network_connection_type,edr_installed,reason_no_edr,uem_installed,reason_no_uem,asset_user,asset_custodian,asset_current_status,date_of_removal,installation_date,end_of_support_date,end_of_life_date,amc_warranty,amc_warranty_expiry_date,critical,remarks,designation,email,phone,custodian';
@@ -97,26 +92,24 @@ async function seed() {
   ];
 
   let invInserted = 0;
-  const assetIds = []; // Track auto-generated IDs for tickets
+  const assetIds = [];
   for (const a of assets) {
     try {
-      const params = colList.map(col => {
+      const values = colList.map(col => {
         let val = a[col] !== undefined ? a[col] : null;
-        let type = sql.NVarChar(255);
         if (['purchase_date','date_of_removal','installation_date','end_of_support_date','end_of_life_date','amc_warranty_expiry_date'].includes(col)) {
-          type = sql.Date;
           val = val && val.trim() ? new Date(val) : null;
         }
-        if (col === 'sr_no') { type = sql.Int; val = val || null; }
-        return { name: col, type, value: val };
+        if (col === 'sr_no') { val = val || null; }
+        return val;
       });
 
       const result = await executeQuery(
-        `INSERT INTO inventory (${invCols}) OUTPUT INSERTED.id VALUES (` + colList.map(c => `@${c}`).join(', ') + ')',
-        params
+        `INSERT INTO inventory (${invCols}) RETURNING id VALUES (${colList.map((_, i) => `$${i + 1}`).join(', ')})`,
+        values
       );
       invInserted++;
-      assetIds.push(result.recordset[0].id);
+      assetIds.push(result.rows[0]?.id);
     } catch (e) {
       console.log('Insert error for', a.asset_id, ':', e.message);
     }
@@ -124,7 +117,7 @@ async function seed() {
   console.log('Inventory items:', invInserted);
   console.log('Asset IDs:', assetIds.join(', '));
 
-  // Seed tickets - use actual auto-generated IDs
+  // Seed tickets
   const tickets = [
     { title:'Laptop not booting - ASM-001847', description:'MacBook Pro not powering on. Checked power adapter and cable.', status:'Open', assigned_team:'IT Help Desk', created_by:1, inventory_id: assetIds[0] },
     { title:'Printer jammed - ASM-001849', description:'HP LaserJet showing paper jam error. Toner cartridge needs replacement.', status:'In Progress', assigned_team:'IT Help Desk', created_by:1, inventory_id: assetIds[2] },
@@ -140,16 +133,8 @@ async function seed() {
   for (const t of tickets) {
     try {
       await executeQuery(
-        'INSERT INTO tickets (title, description, status, assigned_team, created_by, inventory_id, work_notes) VALUES (@title, @description, @status, @assigned_team, @created_by, @inventory_id, @work_notes)',
-        [
-          { name: 'title', type: sql.NVarChar(500), value: t.title },
-          { name: 'description', type: sql.NVarChar(2000), value: t.description },
-          { name: 'status', type: sql.NVarChar(50), value: t.status },
-          { name: 'assigned_team', type: sql.NVarChar(100), value: t.assigned_team },
-          { name: 'created_by', type: sql.Int, value: t.created_by },
-          { name: 'inventory_id', type: sql.Int, value: t.inventory_id },
-          { name: 'work_notes', type: sql.NVarChar(2000), value: '' },
-        ]
+        'INSERT INTO tickets (title, description, status, assigned_team, created_by, inventory_id, work_notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [t.title, t.description, t.status, t.assigned_team, t.created_by, t.inventory_id, '']
       );
       ticketInserted++;
     } catch (e) {

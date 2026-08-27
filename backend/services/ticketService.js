@@ -1,4 +1,4 @@
-const { getPool, executeQuery, sql } = require("../config/db");
+const { executeQuery } = require("../config/db");
 const ApiError = require("../utils/ApiError");
 
 const TEAM_MAP = {
@@ -14,30 +14,24 @@ const createTicket = async (payload, actorUserId) => {
   const assignedTeam = "IT Help Desk";
   const result = await executeQuery(
     `INSERT INTO tickets
-    (title, description, status, created_by, assigned_team, inventory_id, work_notes)
-    OUTPUT INSERTED.*
-    VALUES
-    (@title, @description, 'Open', @created_by, @assigned_team, @inventory_id, @work_notes)`,
+      (title, description, status, created_by, assigned_team, inventory_id, work_notes)
+     RETURNING *
+     VALUES ($1, $2, 'Open', $3, $4, $5, $6)`,
     [
-      { name: "title", type: sql.NVarChar(255), value: payload.title },
-      { name: "description", type: sql.NVarChar(sql.MAX), value: payload.description },
-      { name: "created_by", type: sql.Int, value: actorUserId },
-      { name: "assigned_team", type: sql.NVarChar(100), value: assignedTeam },
-      { name: "inventory_id", type: sql.Int, value: payload.inventory_id || null },
-      { name: "work_notes", type: sql.NVarChar(sql.MAX), value: payload.work_notes || null }
+      payload.title,
+      payload.description,
+      actorUserId,
+      assignedTeam,
+      payload.inventory_id || null,
+      payload.work_notes || null
     ]
   );
 
-  const ticket = result.recordset[0];
+  const ticket = result.rows[0];
   await executeQuery(
     `INSERT INTO ticket_history (ticket_id, action, from_team, to_team, note, performed_by)
-     VALUES (@ticket_id, 'Created', NULL, @to_team, @note, @performed_by)`,
-    [
-      { name: "ticket_id", type: sql.Int, value: ticket.id },
-      { name: "to_team", type: sql.NVarChar(100), value: assignedTeam },
-      { name: "note", type: sql.NVarChar(500), value: "Default assignment to IT Help Desk" },
-      { name: "performed_by", type: sql.Int, value: actorUserId }
-    ]
+     VALUES ($1, 'Created', NULL, $2, $3, $4)`,
+    [ticket.id, assignedTeam, "Default assignment to IT Help Desk", actorUserId]
   );
   return ticket;
 };
@@ -50,138 +44,108 @@ const ALLOWED_TICKET_SORT_COLUMNS = [
 const listTickets = async (pagination, filters = {}) => {
   const conditions = [];
   const params = [];
-  let paramIndex = 0;
 
-  const addCondition = (sqlClause, value, type) => {
+  const addCondition = (sqlClause, value) => {
     if (value === undefined || value === null || value === "") return;
-    const paramName = `p${paramIndex++}`;
-    conditions.push(sqlClause.replace("@p", `@${paramName}`));
-    params.push({ name: paramName, type, value });
+    conditions.push(sqlClause);
+    params.push(value);
   };
 
-  addCondition("t.status = @p", filters.status, sql.NVarChar(50));
-  addCondition("t.assigned_team = @p", filters.assigned_team, sql.NVarChar(100));
+  addCondition("t.status = $1", filters.status);
+  addCondition("t.assigned_team = $1", filters.assigned_team);
 
   if (filters.search && filters.search.trim()) {
     const searchTerm = `%${filters.search.trim()}%`;
     const searchFields = ["t.title", "t.description", "u.name"];
-    const searchClause = searchFields.map(f => `${f} LIKE @searchTerm`).join(" OR ");
+    const searchClause = searchFields.map(() => `$${params.length + 1}`).join(" OR ");
     conditions.push(`(${searchClause})`);
-    params.push({ name: "searchTerm", type: sql.NVarChar(255), value: searchTerm });
+    params.push(searchTerm);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  const sortBy = pagination.sortBy && ALLOWED_TICKET_SORT_COLUMNS.includes(pagination.sortBy)
-    ? pagination.sortBy
-    : "t.created_at";
+  const sortBy =
+    pagination.sortBy && ALLOWED_TICKET_SORT_COLUMNS.includes(pagination.sortBy)
+      ? pagination.sortBy
+      : "t.created_at";
 
   const orderClause = `ORDER BY ${sortBy} ${pagination.sortDirection}`;
 
+  // Separate count query
+  const countQuery = `
+    SELECT COUNT(*) AS total
+    FROM tickets t
+    INNER JOIN users u ON u.id = t.created_by
+    ${whereClause}
+  `;
+  const countResult = await executeQuery(countQuery, params.slice(0, params.length - 2));
+  const total = parseInt(countResult.rows[0]?.total || 0, 10);
+
   const query = `
-    SELECT t.*, u.name AS created_by_name, COUNT(*) OVER() AS _totalCount
+    SELECT t.*, u.name AS created_by_name
     FROM tickets t
     INNER JOIN users u ON u.id = t.created_by
     ${whereClause}
     ${orderClause}
-    OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
   `;
 
-  const allParams = [
-    ...params,
-    { name: "offset", type: sql.Int, value: pagination.offset },
-    { name: "pageSize", type: sql.Int, value: pagination.pageSize }
-  ];
-
+  const allParams = [...params, pagination.pageSize, pagination.offset];
   const result = await executeQuery(query, allParams);
-  const records = result.recordset;
-  const total = records.length > 0 ? records[0]._totalCount : 0;
-  const data = records.map(({ _totalCount, ...rest }) => rest);
-  return { data, total };
+  return { data: result.rows, total };
 };
 
 const getTicketById = async (id) => {
-  const result = await executeQuery("SELECT * FROM tickets WHERE id = @id", [
-    { name: "id", type: sql.Int, value: Number(id) }
-  ]);
-  const ticket = result.recordset[0];
+  const result = await executeQuery("SELECT * FROM tickets WHERE id = $1", [Number(id)]);
+  const ticket = result.rows[0];
   if (!ticket) throw new ApiError(404, "Ticket not found");
 
   const history = await executeQuery(
     `SELECT h.*, u.name AS performed_by_name
      FROM ticket_history h
      LEFT JOIN users u ON u.id = h.performed_by
-     WHERE h.ticket_id = @ticket_id
+     WHERE h.ticket_id = $1
      ORDER BY h.created_at ASC`,
-    [{ name: "ticket_id", type: sql.Int, value: Number(id) }]
+    [Number(id)]
   );
-  return { ...ticket, history: history.recordset };
+  return { ...ticket, history: history.rows };
 };
 
 const assignTeam = async (id, toTeam, actorUserId, note = null) => {
   if (!validTeams.includes(toTeam)) throw new ApiError(400, "Invalid team");
-  const pool = await getPool();
-  const transaction = new sql.Transaction(pool);
-  await transaction.begin();
-  try {
-    const currentRequest = new sql.Request(transaction);
-    currentRequest.input("id", sql.Int, Number(id));
-    const current = await currentRequest.query("SELECT * FROM tickets WHERE id = @id");
-    const ticket = current.recordset[0];
-    if (!ticket) throw new ApiError(404, "Ticket not found");
-
-    const updateRequest = new sql.Request(transaction);
-    updateRequest.input("id", sql.Int, Number(id));
-    updateRequest.input("assigned_team", sql.NVarChar(100), toTeam);
-    await updateRequest.query(
-      "UPDATE tickets SET assigned_team=@assigned_team, updated_at=SYSUTCDATETIME() WHERE id=@id"
-    );
-
-    const histRequest = new sql.Request(transaction);
-    histRequest.input("ticket_id", sql.Int, Number(id));
-    histRequest.input("from_team", sql.NVarChar(100), ticket.assigned_team);
-    histRequest.input("to_team", sql.NVarChar(100), toTeam);
-    histRequest.input("note", sql.NVarChar(500), note || "Assignment updated");
-    histRequest.input("performed_by", sql.Int, actorUserId);
-    await histRequest.query(
-      `INSERT INTO ticket_history (ticket_id, action, from_team, to_team, note, performed_by)
-       VALUES (@ticket_id, 'Assigned', @from_team, @to_team, @note, @performed_by)`
-    );
-
-    await transaction.commit();
-    return getTicketById(id);
-  } catch (error) {
-    await transaction.rollback();
-    throw error;
-  }
-};
-
-const transferTicket = async (id, toTeam, actorUserId, note = null) => {
-  if (!validTeams.includes(toTeam)) throw new ApiError(400, "Invalid team");
-  const ticketResult = await executeQuery("SELECT * FROM tickets WHERE id = @id", [
-    { name: "id", type: sql.Int, value: Number(id) }
-  ]);
-  const ticket = ticketResult.recordset[0];
+  const ticketResult = await executeQuery("SELECT * FROM tickets WHERE id = $1", [Number(id)]);
+  const ticket = ticketResult.rows[0];
   if (!ticket) throw new ApiError(404, "Ticket not found");
 
   await executeQuery(
-    "UPDATE tickets SET assigned_team = @assigned_team, updated_at = SYSUTCDATETIME() WHERE id = @id",
-    [
-      { name: "id", type: sql.Int, value: Number(id) },
-      { name: "assigned_team", type: sql.NVarChar(100), value: toTeam }
-    ]
+    "UPDATE tickets SET assigned_team = $1, updated_at = NOW() WHERE id = $2",
+    [toTeam, Number(id)]
   );
 
   await executeQuery(
     `INSERT INTO ticket_history (ticket_id, action, from_team, to_team, note, performed_by)
-     VALUES (@ticket_id, 'Transferred', @from_team, @to_team, @note, @performed_by)`,
-    [
-      { name: "ticket_id", type: sql.Int, value: Number(id) },
-      { name: "from_team", type: sql.NVarChar(100), value: ticket.assigned_team },
-      { name: "to_team", type: sql.NVarChar(100), value: toTeam },
-      { name: "note", type: sql.NVarChar(500), value: note || "Transferred" },
-      { name: "performed_by", type: sql.Int, value: actorUserId }
-    ]
+     VALUES ($1, 'Assigned', $2, $3, $4, $5)`,
+    [Number(id), ticket.assigned_team, toTeam, note || "Assignment updated", actorUserId]
+  );
+
+  return getTicketById(id);
+};
+
+const transferTicket = async (id, toTeam, actorUserId, note = null) => {
+  if (!validTeams.includes(toTeam)) throw new ApiError(400, "Invalid team");
+  const ticketResult = await executeQuery("SELECT * FROM tickets WHERE id = $1", [Number(id)]);
+  const ticket = ticketResult.rows[0];
+  if (!ticket) throw new ApiError(404, "Ticket not found");
+
+  await executeQuery(
+    "UPDATE tickets SET assigned_team = $1, updated_at = NOW() WHERE id = $2",
+    [toTeam, Number(id)]
+  );
+
+  await executeQuery(
+    `INSERT INTO ticket_history (ticket_id, action, from_team, to_team, note, performed_by)
+     VALUES ($1, 'Transferred', $2, $3, $4, $5)`,
+    [Number(id), ticket.assigned_team, toTeam, note || "Transferred", actorUserId]
   );
 
   return getTicketById(id);
@@ -192,41 +156,36 @@ const updateStatus = async (id, status, actorUserId) => {
   if (!allowed.includes(status)) throw new ApiError(400, "Invalid status");
 
   // Capture current status before update
-  const current = await executeQuery("SELECT status, assigned_team FROM tickets WHERE id = @id", [
-    { name: "id", type: sql.Int, value: Number(id) }
+  const current = await executeQuery("SELECT status, assigned_team FROM tickets WHERE id = $1", [
+    Number(id)
   ]);
-  const ticket = current.recordset[0];
+  const ticket = current.rows[0];
   if (!ticket) throw new ApiError(404, "Ticket not found");
 
   const result = await executeQuery(
-    "UPDATE tickets SET status = @status, updated_at = SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id = @id",
-    [
-      { name: "id", type: sql.Int, value: Number(id) },
-      { name: "status", type: sql.NVarChar(50), value: status }
-    ]
+    "UPDATE tickets SET status = $1, updated_at = NOW() RETURNING * WHERE id = $2",
+    [status, Number(id)]
   );
-  const updated = result.recordset[0];
+  const updated = result.rows[0];
   if (!updated) throw new ApiError(404, "Ticket not found");
 
   await executeQuery(
     `INSERT INTO ticket_history (ticket_id, action, from_team, to_team, note, performed_by)
-     VALUES (@ticket_id, 'Status Updated', @from_team, @to_team, @note, @performed_by)`,
+     VALUES ($1, 'Status Updated', $2, $3, $4, $5)`,
     [
-      { name: "ticket_id", type: sql.Int, value: Number(id) },
-      { name: "from_team", type: sql.NVarChar(100), value: ticket.assigned_team },
-      { name: "to_team", type: sql.NVarChar(100), value: updated.assigned_team },
-      { name: "note", type: sql.NVarChar(500), value: `${ticket.status} → ${status}` },
-      { name: "performed_by", type: sql.Int, value: actorUserId }
+      Number(id),
+      ticket.assigned_team,
+      updated.assigned_team,
+      `${ticket.status} → ${status}`,
+      actorUserId
     ]
   );
   return updated;
 };
 
 const addWorkNotes = async (id, workNotes, actorUserId) => {
-  const ticketResult = await executeQuery("SELECT * FROM tickets WHERE id = @id", [
-    { name: "id", type: sql.Int, value: Number(id) }
-  ]);
-  const ticket = ticketResult.recordset[0];
+  const ticketResult = await executeQuery("SELECT * FROM tickets WHERE id = $1", [Number(id)]);
+  const ticket = ticketResult.rows[0];
   if (!ticket) throw new ApiError(404, "Ticket not found");
 
   const merged = ticket.work_notes
@@ -234,54 +193,53 @@ const addWorkNotes = async (id, workNotes, actorUserId) => {
     : `${new Date().toISOString()} - ${workNotes}`;
 
   const result = await executeQuery(
-    "UPDATE tickets SET work_notes=@work_notes, updated_at=SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id=@id",
-    [
-      { name: "id", type: sql.Int, value: Number(id) },
-      { name: "work_notes", type: sql.NVarChar(sql.MAX), value: merged }
-    ]
+    "UPDATE tickets SET work_notes=$1, updated_at=NOW() RETURNING * WHERE id=$2",
+    [merged, Number(id)]
   );
 
   await executeQuery(
     `INSERT INTO ticket_history (ticket_id, action, from_team, to_team, note, performed_by)
-     VALUES (@ticket_id, 'Work Note Added', @from_team, @to_team, @note, @performed_by)`,
+     VALUES ($1, 'Work Note Added', $2, $3, $4, $5)`,
     [
-      { name: "ticket_id", type: sql.Int, value: Number(id) },
-      { name: "from_team", type: sql.NVarChar(100), value: ticket.assigned_team },
-      { name: "to_team", type: sql.NVarChar(100), value: ticket.assigned_team },
-      { name: "note", type: sql.NVarChar(500), value: workNotes.slice(0, 500) },
-      { name: "performed_by", type: sql.Int, value: actorUserId }
+      Number(id),
+      ticket.assigned_team,
+      ticket.assigned_team,
+      workNotes.slice(0, 500),
+      actorUserId
     ]
   );
 
-  return result.recordset[0];
+  return result.rows[0];
 };
 
 const deleteTicket = async (id, actorUserId) => {
-  const ticketResult = await executeQuery("SELECT * FROM tickets WHERE id = @id", [
-    { name: "id", type: sql.Int, value: Number(id) }
-  ]);
-  const ticket = ticketResult.recordset[0];
+  const ticketResult = await executeQuery("SELECT * FROM tickets WHERE id = $1", [Number(id)]);
+  const ticket = ticketResult.rows[0];
   if (!ticket) throw new ApiError(404, "Ticket not found");
 
   await executeQuery(
     `INSERT INTO ticket_history (ticket_id, action, from_team, to_team, note, performed_by)
-     VALUES (@ticket_id, 'Deleted', @from_team, NULL, @note, @performed_by)`,
-    [
-      { name: "ticket_id", type: sql.Int, value: Number(id) },
-      { name: "from_team", type: sql.NVarChar(100), value: ticket.assigned_team },
-      { name: "note", type: sql.NVarChar(500), value: "Ticket deleted" },
-      { name: "performed_by", type: sql.Int, value: actorUserId }
-    ]
+     VALUES ($1, 'Deleted', $2, NULL, $3, $4)`,
+    [Number(id), ticket.assigned_team, "Ticket deleted", actorUserId]
   );
 
   // Delete history first to respect FK constraint, then delete ticket
-  await executeQuery("DELETE FROM ticket_history WHERE ticket_id = @id", [
-    { name: "id", type: sql.Int, value: Number(id) }
-  ]);
-  await executeQuery("DELETE FROM tickets WHERE id = @id", [
-    { name: "id", type: sql.Int, value: Number(id) }
-  ]);
+  await executeQuery("DELETE FROM ticket_history WHERE ticket_id = $1", [Number(id)]);
+  await executeQuery("DELETE FROM tickets WHERE id = $1", [Number(id)]);
   return ticket;
+};
+
+const searchUsers = async (q) => {
+  const pattern = `%${q}%`;
+  const result = await executeQuery(
+    `SELECT i.id, i.asset_user, i.email, i.phone
+     FROM inventory i
+     WHERE i.asset_user LIKE $1 OR i.email LIKE $1 OR i.phone LIKE $1
+     ORDER BY i.asset_user
+     LIMIT 10`,
+    [pattern]
+  );
+  return result.rows || [];
 };
 
 module.exports = {
@@ -293,5 +251,6 @@ module.exports = {
   updateStatus,
   addWorkNotes,
   deleteTicket,
+  searchUsers,
   validTeams
 };
