@@ -33,11 +33,11 @@ This project has two parts — a backend (server) and a frontend (user interface
 | Software | Purpose | Minimum Version |
 |----------|---------|-----------------|
 | [Node.js](https://nodejs.org/) | Runs the backend and frontend servers | 18.x or later |
-| [SQL Server](https://www.microsoft.com/en-us/sql-server/sql-server-downloads) (Developer edition is free) | Stores all application data | 2019 or later |
+| [PostgreSQL](https://www.postgresql.org/download/windows/) | Stores all application data | 14 or later |
 | [Git](https://git-scm.com/) | Downloads the project files | Any recent version |
 
 **Optional but helpful:**
-- [SQL Server Management Studio (SSMS)](https://learn.microsoft.com/en-us/sql/ssms/download-sql-server-management-studio-ssms) — visual database management
+- [pgAdmin](https://www.pgadmin.org/) — visual database management for PostgreSQL
 - [Postman](https://www.postman.com/) — for testing API endpoints
 - A code editor like [Visual Studio Code](https://code.visualstudio.com/)
 
@@ -62,14 +62,15 @@ You should see a version number like `v18.x.x` or higher. Also verify npm:
 npm --version
 ```
 
-### Install SQL Server
+### Install PostgreSQL
 
-1. Go to [Microsoft SQL Server Downloads](https://www.microsoft.com/en-us/sql-server/sql-server-downloads).
-2. Download **SQL Server Developer Edition** (free for development and testing).
-3. During installation, choose **Basic** or **Custom**:
-   - If you choose **Custom**, note the install location.
-4. When prompted for authentication mode, select **Windows Authentication** (simplest for local use). Alternatively, choose **Mixed Mode** and set a strong password for the `sa` account — you will need this password later.
-5. Keep the default instance name (usually `SQLEXPRESS`) or note your custom name.
+1. Go to [PostgreSQL Downloads](https://www.postgresql.org/download/windows/).
+2. Download the latest installer (PostgreSQL 14+ recommended).
+3. Run the installer. Accept the default location (`C:\Program Files\PostgreSQL\<version>`).
+4. When prompted for a password, set a strong password for the `postgres` superuser — you will need this password later.
+5. Keep the default port (`5432`) unless you have a conflict.
+6. Accept the default locale (`English_India`) or choose your preferred locale.
+7. Complete the installation. PostgreSQL will be registered as a Windows service and start automatically.
 
 ### Install Git
 
@@ -101,33 +102,61 @@ cd ..
 
 ## 4. Set Up the Database
 
-The app needs a database to store users, inventory items, and tickets. The project includes a schema file that creates everything automatically.
+The app needs a PostgreSQL database to store users, inventory items, and tickets. The project includes a schema DDL file that creates everything automatically.
 
-### Option A: Using SQL Server Management Studio (SSMS)
+### Step 4a: Create the Database
 
-1. Open SSMS and connect to your SQL Server instance.
-2. Open the file `backend/scripts/schema.sql` (inside the project folder).
-3. Click **Execute** (or press F5). This creates the `OfficeManagement` database with all required tables.
-
-### Option B: Using the command line
-
-If you have the `sqlcmd` tool installed (comes with SQL Server):
+First, create the `office_management` database. Open a terminal and run:
 
 ```bash
 cd backend
-node scripts/apply_schema.js
+createdb -U postgres -h localhost office_management
 ```
 
-This reads `schema.sql` and applies it to your database.
+Alternatively, connect via psql and create it interactively:
 
-**Verify the database was created:**
-
-In SSMS or `sqlcmd`, run:
-```sql
-SELECT name FROM sys.databases WHERE name = 'OfficeManagement';
+```bash
+psql -U postgres -h localhost
+# At the psql prompt:
+CREATE DATABASE office_management;
+\q
 ```
 
-You should see `OfficeManagement` in the results.
+> **Note:** Replace `postgres` with the superuser name you set during PostgreSQL installation. If you set a password, you may need to set the `PGPASSWORD` environment variable: `set PGPASSWORD=yourpassword` (Windows) or `export PGPASSWORD=yourpassword` (Linux/Mac).
+
+### Step 4b: Apply the Schema
+
+Run the migration script to create all tables, constraints, indexes, and seed data:
+
+```bash
+cd backend
+node scripts/migrate_to_postgres.js
+```
+
+This reads `docs/PostgreSQL_Schema_DDL.sql` and applies it in a transaction. You should see:
+```
+Schema DDL executed successfully.
+Transaction committed.
+...
+Migration completed successfully!
+```
+
+**Verify the tables were created:**
+
+```bash
+psql -U postgres -h localhost -d office_management -c "\dt"
+```
+
+You should see: `users`, `inventory`, `tickets`, `ticket_history`, `lookup_values`.
+
+### Database Scripts Reference
+
+| Script | Purpose |
+|--------|---------|
+| `npm run migrate-pg` | Apply the full PostgreSQL schema (tables, indexes, constraints, seed data) |
+| `npm run rollback-pg` | Drop all application tables (WARNING: deletes all data) |
+| `npm run test-db` | Test database connectivity and PostgreSQL features |
+| `npm run seed-admin` | Create/update the admin user account |
 
 ---
 
@@ -140,22 +169,28 @@ The backend reads its settings from a `.env` file. Create one now.
 
 ```ini
 # Database connection
-DB_SERVER=127.0.0.1
-DB_PORT=1433
-DB_NAME=OfficeManagement
-DB_USER=sa
-DB_PASS=YourStrongPassword123!
-DB_ENCRYPT=false
-DB_TRUST_CERT=true
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=office_management
+DB_USER=postgres
+DB_PASSWORD=your-postgres-password
+
+# Connection pool (optional — defaults shown)
+DB_POOL_MAX=20
+DB_POOL_TIMEOUT=10000
+DB_CONNECTION_TIMEOUT=5000
 
 # JWT secret (change this to any random string for local testing)
 JWT_SECRET=local-dev-secret-key-change-in-production
 
 # Server port
 PORT=5000
+
+# CORS origin (frontend URL)
+CORS_ORIGIN=http://localhost:5173
 ```
 
-**Important:** Replace `YourStrongPassword123!` with the actual password you set during SQL Server installation. If you used Windows Authentication, set `DB_USER` to your Windows username (e.g., `DELL`) and remove or leave `DB_PASS` empty — but note the app requires a password value, so Mixed Mode with the `sa` account is recommended.
+**Important:** Replace `your-postgres-password` with the actual password you set during PostgreSQL installation. If you are using trust authentication (e.g., local development), you can set the password to an empty string but note the app requires a password value, so setting a password is recommended.
 
 ---
 
@@ -169,15 +204,16 @@ npm run dev
 
 You should see output like:
 ```
-Connecting to SQL Server 127.0.0.1:1433, database OfficeManagement, user sa
+Connecting to PostgreSQL localhost:5432, database office_management, user postgres
 DB Connected
 Server running on port 5000
 ```
 
 **If you see `DB Connection Failed`**, check:
-- SQL Server is running (open Services and look for "SQL Server").
-- The password in `.env` matches your SQL Server password.
-- Port 1433 is not blocked by a firewall.
+- PostgreSQL is running (open Services and look for "postgresql-x64-18" or similar).
+- The password in `.env` matches your PostgreSQL password.
+- Port 5432 is not blocked by a firewall.
+- The database `office_management` exists: run `psql -U postgres -h localhost -l` to list databases.
 
 Leave this terminal open — the server must keep running.
 
@@ -251,13 +287,15 @@ If all of this works, your local environment is fully functional.
 
 | Problem | Likely Cause | Fix |
 |---------|-------------|-----|
-| `DB_PASS is missing in .env` | The `.env` file is missing or empty | Create the `.env` file in the `backend` folder (see Step 5) |
-| `DB Connection Failed` | SQL Server is not running or wrong credentials | Open Windows Services, find "SQL Server (MSSQLSERVER)" or "SQL Server (SQLEXPRESS)", and start it |
+| `DB_PASSWORD is missing in .env` | The `.env` file is missing or empty | Create the `.env` file in the `backend` folder (see Step 5) |
+| `DB Connection Failed` | PostgreSQL is not running or wrong credentials | Open Windows Services, find "postgresql-x64-18", and check it is running. Verify `DB_PASSWORD` in `.env` matches your PostgreSQL password. |
+| `password authentication failed for user "postgres"` | Wrong password in `.env` | Update `DB_PASSWORD` in `backend/.env` with the correct PostgreSQL password. Reset it with: `psql -U postgres -c "ALTER USER postgres PASSWORD 'newpassword';"` |
+| `DB_HOST is missing` or `DB_NAME is missing` | `.env` file not found or misconfigured | Ensure `.env` is in the `backend/` directory and contains all required DB_* variables |
 | `EACCES: permission denied` on port 5000 | Another process is using port 5000 | Change `PORT=5000` to another value (e.g., `PORT=5001`) in `backend/.env` and update `frontend/src/services/api.js` accordingly |
 | Frontend shows a blank page or network error | Backend is not running | Make sure the backend terminal is still running (`npm run dev` in `backend/`) |
 | `Cannot find module` errors after `npm install` | Dependencies not fully installed | Delete `node_modules` and `package-lock.json` in the failing folder, then run `npm install` again |
 | Browser says "Not authorized" or redirects to login | JWT token expired or invalid | Log out and log back in; tokens expire after a period of inactivity |
-| `SQL Server error: Login failed for user` | Wrong username or password in `.env` | Double-check `DB_USER` and `DB_PASS` match your SQL Server credentials |
+| Port 5432 already in use | Another PostgreSQL instance is running | Check with `netstat -an | findstr 5432` and stop conflicting services, or change `DB_PORT` in `.env` |
 | Port 5173 already in use | Another Vite instance is running | Close the other instance, or stop it with `Ctrl+C`, then re-run `npm run dev` |
 
 ---
@@ -272,20 +310,22 @@ If all of this works, your local environment is fully functional.
 
 - **Do not edit files in `frontend/dist`.** This folder is generated by `npm run build`. Always edit source files in `frontend/src/`.
 
-- **Database changes require re-running the schema.** If you modify `backend/scripts/schema.sql`, run `npm run init-db` from the `backend` folder. Warning: this drops and recreates all tables — it will erase existing data.
+- **Database changes require re-running the migration.** If you modify `docs/PostgreSQL_Schema_DDL.sql`, first rollback with `npm run rollback-pg` (WARNING: deletes all data), then re-run `npm run migrate-pg`.
 
 - **Use a `.env` example for your team.** Create a `backend/.env.example` file with placeholder values (no real passwords) so new team members know what to fill in:
 
   ```ini
-  DB_SERVER=127.0.0.1
-  DB_PORT=1433
-  DB_NAME=OfficeManagement
-  DB_USER=sa
-  DB_PASS=<your-sql-server-password>
-  DB_ENCRYPT=false
-  DB_TRUST_CERT=true
+  DB_HOST=localhost
+  DB_PORT=5432
+  DB_NAME=office_management
+  DB_USER=postgres
+  DB_PASSWORD=<your-postgres-password>
+  DB_POOL_MAX=20
+  DB_POOL_TIMEOUT=10000
+  DB_CONNECTION_TIMEOUT=5000
   JWT_SECRET=<any-random-string>
   PORT=5000
+  CORS_ORIGIN=http://localhost:5173
   ```
 
 - **Quick health check.** Bookmark `http://localhost:5000/health` — if it returns `{"ok": true}`, the backend is alive.
@@ -296,10 +336,10 @@ If all of this works, your local environment is fully functional.
 
 Here is the complete workflow in order:
 
-1. Install **Node.js**, **SQL Server**, and **Git**.
+1. Install **Node.js**, **PostgreSQL**, and **Git**.
 2. Clone the repository and run `npm install` in both `backend/` and `frontend/`.
-3. Create the database using `schema.sql` (via SSMS or `npm run init-db`).
-4. Create `backend/.env` with your SQL Server credentials and a JWT secret.
+3. Create the database and apply schema: `cd backend && npm run migrate-pg`.
+4. Create `backend/.env` with your PostgreSQL credentials and a JWT secret.
 5. Start the backend: `cd backend && npm run dev`.
 6. Start the frontend: `cd frontend && npm run dev` (in a separate terminal).
 7. Create an admin user: `npm run seed-admin`.
@@ -309,5 +349,32 @@ Two terminals, two commands, one browser tab — that is all it takes to have th
 
 ---
 
-*Document created: August 14, 2026 · Last updated: August 24, 2026*
+## PostgreSQL Quick Reference
+
+```bash
+# Start/stop PostgreSQL (Windows Services)
+net start postgresql-x64-18
+net stop postgresql-x64-18
+
+# Connect to the database
+psql -U postgres -h localhost -d office_management
+
+# Useful psql commands
+\dt          -- list tables
+\d tables    -- describe a table
+\q           -- quit
+
+# Reset postgres password (if needed)
+psql -U postgres -c "ALTER USER postgres PASSWORD 'newpassword';"
+
+# Create database
+createdb -U postgres office_management
+
+# Rollback all tables (WARNING: deletes data)
+node scripts/rollback_postgres.js
+```
+
+---
+
+*Document created: August 14, 2026 · Last updated: August 27, 2026*
 *Project: IT Inventory & Ticketing System (Office-management-system-Government-node)*

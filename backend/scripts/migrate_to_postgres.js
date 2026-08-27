@@ -37,8 +37,8 @@ const parsePort = (value) => {
 
 const main = async () => {
   try {
-    // Load .env from project root (one level up from backend/)
-    const envPath = path.join(__dirname, "../../.env");
+    // Load .env from backend/ directory (where it lives alongside package.json)
+    const envPath = path.join(__dirname, "../.env");
     if (!fs.existsSync(envPath)) {
       console.error("ERROR: .env file not found at", envPath);
       process.exit(1);
