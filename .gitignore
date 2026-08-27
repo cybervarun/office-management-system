@@ -35,3 +35,22 @@ coverage/
 # Temp files
 *.tmp
 *.temp
+
+# Vector DB / Ruflo artifacts
+ruvector.db
+
+# Backend log files
+backend/backend.err.log
+backend/backend.log
+backend/backend.out.log
+
+# Frontend log files
+frontend/frontend.log
+frontend/vite.out.log
+
+# Test results
+frontend/test-results/
+backend/test-results/
+
+# OS / IDE
+Thumbs.db

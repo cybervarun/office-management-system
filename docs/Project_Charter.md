@@ -2,9 +2,9 @@
 
 ## IT Inventory & Ticketing System — Government Office
 
-**Version:** 1.0.0
-**Date:** 2026-08-24
-**Status:** Production-Ready (MVP)
+**Version:** 2.0.0
+**Date:** 2026-08-27
+**Status:** Production-Ready (MVP) — PostgreSQL migration complete
 
 ---
 
@@ -80,7 +80,7 @@ Government offices manage thousands of IT assets (computers, printers, periphera
 |-------|-----------|
 | Frontend | React 18 + Vite 7 + React Router 6 |
 | Backend | Node.js 18 + Express 4 |
-| Database | Microsoft SQL Server (OfficeManagement) |
+| Database | PostgreSQL 14+ (office_management) |
 | Auth | JWT (jsonwebtoken) + bcryptjs |
 | Validation | express-validator |
 | HTTP Client | Axios |
@@ -122,7 +122,7 @@ Office-management-system-Government-node/
 
 | Risk | Impact | Mitigation |
 |------|--------|-----------|
-| SQL injection via unsanitized input | High | All queries use parameterized `mssql` requests |
+| SQL injection via unsanitized input | High | All queries use parameterized `$1, $2` positional params via `pg` |
 | JWT secret exposure | High | Stored in `.env`, never committed |
 | Concurrent asset insert duplicate | Medium | Backend uniqueness check on serial/MAC before insert |
 | No rate limiting on auth endpoint | Medium | Add in v2; currently not exploited in intranet |

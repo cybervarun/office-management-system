@@ -10,10 +10,11 @@
     "migrate-pg": "node scripts/migrate_to_postgres.js",
     "rollback-pg": "node scripts/rollback_postgres.js",
     "seed-admin": "node scripts/create_admin.js",
-    "test-db": "node scripts/test-db-connection.js"
+    "test-db": "node scripts/test-db-connection.js",
+    "test": "cd .. && npx jest --config jest.config.js --verbose",
+    "test:integration": "cd .. && npx jest --config jest.config.js --verbose --runInBand"
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
@@ -22,6 +23,9 @@
     "pg": "^8.23.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.4"
+    "bcryptjs": "^3.0.3",
+    "jest": "^30.4.2",
+    "nodemon": "^3.1.4",
+    "supertest": "^7.2.2"
   }
 }

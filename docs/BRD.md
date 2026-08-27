@@ -196,7 +196,7 @@ Admin → Login → Users
 | # | Assumption |
 |---|-----------|
 | A-1 | All users are internal government office staff with known email addresses |
-| A-2 | SQL Server is available on the office network (on-premise deployment) |
+| A-2 | PostgreSQL is available on the office network (on-premise deployment) |
 | A-3 | Single-tenant deployment (one database, one office) |
 | A-4 | No integration with external identity providers (AD/LDAP) in v1 |
 | A-5 | Inventory CSV files follow a predefined column structure |

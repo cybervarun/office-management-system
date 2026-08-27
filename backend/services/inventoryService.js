@@ -62,7 +62,7 @@ const buildInsertQuery = (payload) => {
   });
 
   return {
-    query: `INSERT INTO inventory (${columns}) RETURNING * VALUES (${placeholders})`,
+    query: `INSERT INTO inventory (${columns}) VALUES (${placeholders}) RETURNING *`,
     parameters: values
   };
 };
@@ -72,6 +72,11 @@ const buildUpdateQuery = (id, payload) => {
   const payloadSafe = { ...payload };
   delete payloadSafe.asset_id;
   const fieldNames = allFields.filter((f) => Object.prototype.hasOwnProperty.call(payloadSafe, f));
+
+  if (fieldNames.length === 0) {
+    throw new ApiError(400, "No valid fields to update");
+  }
+
   const setClauses = fieldNames.map((f, i) => `${f} = $${i + 2}`).join(", ");
 
   const values = [
@@ -83,7 +88,7 @@ const buildUpdateQuery = (id, payload) => {
   ];
 
   return {
-    query: `UPDATE inventory SET ${setClauses}, updated_at = NOW() RETURNING * WHERE id = $1`,
+    query: `UPDATE inventory SET ${setClauses}, updated_at = NOW() WHERE id = $1 RETURNING *`,
     parameters: values
   };
 };
@@ -116,6 +121,9 @@ const addAsset = async (payload) => {
 };
 
 const editAsset = async (id, payload) => {
+  const numericId = Number(id);
+  if (isNaN(numericId)) throw new ApiError(400, "Invalid asset ID");
+
   // Prevent asset_id mutation
   if (payload.asset_id) delete payload.asset_id;
 
@@ -124,12 +132,12 @@ const editAsset = async (id, payload) => {
     const check = await executeQuery(
       `SELECT * FROM inventory WHERE id <> $1 AND ((serial_number IS NOT NULL AND serial_number = $2) OR (mac_address IS NOT NULL AND mac_address = $3))
        LIMIT 1`,
-      [Number(id), payload.serial_number || null, payload.mac_address || null]
+      [numericId, payload.serial_number || null, payload.mac_address || null]
     );
     if (check.rows.length) throw new ApiError(409, "serial_number or mac_address already bound to another asset");
   }
 
-  const { query, parameters } = buildUpdateQuery(id, payload);
+  const { query, parameters } = buildUpdateQuery(numericId, payload);
   const result = await executeQuery(query, parameters);
   if (!result.rows[0]) throw new ApiError(404, "Inventory record not found");
   return result.rows[0];
@@ -148,23 +156,11 @@ const listAssets = async (pagination, filters = {}) => {
   const conditions = [];
   const params = [];
 
-  // Build WHERE conditions from filters
   const addCondition = (sqlClause, value) => {
     if (value === undefined || value === null || value === "") return;
     conditions.push(sqlClause);
     params.push(value);
   };
-
-  addCondition("asset_user LIKE $1", filters.search ? `%${filters.search}%` : null);
-  addCondition("email LIKE $1", filters.search ? `%${filters.search}%` : null);
-  addCondition("phone LIKE $1", filters.search ? `%${filters.search}%` : null);
-
-  addCondition("ministry = $1", filters.ministry);
-  addCondition("department = $1", filters.department);
-  addCondition("asset_category = $1", filters.asset_category);
-  addCondition("asset_current_status = $1", filters.asset_current_status);
-  addCondition("edr_installed = $1", filters.edr_installed);
-  addCondition("uem_installed = $1", filters.uem_installed);
 
   // Search across multiple fields (if user provided a search term)
   if (filters.search && filters.search.trim()) {
@@ -176,33 +172,27 @@ const listAssets = async (pagination, filters = {}) => {
       "asset_custodian"
     ];
     const searchConditions = searchFields.map((f) => `${f} LIKE $1`).join(" OR ");
-    // Clear and rebuild cleanly
-    conditions.length = 0;
-    params.length = 0;
-
-    // Re-add non-search filters
-    addCondition("ministry = $1", filters.ministry);
-    addCondition("department = $1", filters.department);
-    addCondition("asset_category = $1", filters.asset_category);
-    addCondition("asset_current_status = $1", filters.asset_current_status);
-    addCondition("edr_installed = $1", filters.edr_installed);
-    addCondition("uem_installed = $1", filters.uem_installed);
-
-    // Add search condition
-    conditions.push(`(${searchConditions})`);
-    params.push(searchTerm);
+    addCondition(`(${searchConditions})`, searchTerm);
   }
+
+  // Non-search filter conditions
+  addCondition("ministry = $1", filters.ministry);
+  addCondition("department = $1", filters.department);
+  addCondition("asset_category = $1", filters.asset_category);
+  addCondition("asset_current_status = $1", filters.asset_current_status);
+  addCondition("edr_installed = $1", filters.edr_installed);
+  addCondition("uem_installed = $1", filters.uem_installed);
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const sortBy =
     pagination.sortBy && ALLOWED_INVENTORY_SORT_COLUMNS.includes(pagination.sortBy)
       ? pagination.sortBy
       : "created_at";
-  const orderClause = `ORDER BY ${sortBy} ${pagination.sortDirection}`;
+  const orderClause = `ORDER BY ${sortBy} ${pagination.sortDirection || 'DESC'}`;
 
   // Separate count query for total
   const countQuery = `SELECT COUNT(*) AS total FROM inventory ${whereClause}`;
-  const countResult = await executeQuery(countQuery, params.slice(0, -2));
+  const countResult = await executeQuery(countQuery, params);
   const total = parseInt(countResult.rows[0]?.total || 0, 10);
 
   const query = `
@@ -218,43 +208,26 @@ const listAssets = async (pagination, filters = {}) => {
 };
 
 const getDropdownValues = async () => {
-  const response = {};
-
-  const compositeFields = [
+  const allFields = [
     "ministry", "department", "asset_category", "operating_system",
     "network_connection_type", "asset_current_status", "amc_warranty", "critical",
-    "edr_installed", "uem_installed"
+    "edr_installed", "uem_installed",
+    "asset_user", "asset_custodian", "division"
   ];
 
-  const simpleFields = ["asset_user", "asset_custodian", "division"];
-
-  const parts = [];
-  for (const field of compositeFields) {
-    // Use safe string interpolation for column/table names (hardcoded allowlist)
-    parts.push(
-      `SELECT $1::text AS f, ${field} AS v FROM inventory WHERE ${field} IS NOT NULL AND ${field} <> ''`
-    );
-    parts.push(
-      `SELECT $1::text AS f, name AS v FROM lookup_values WHERE lookup_type = $1`
-    );
-  }
-  for (const field of simpleFields) {
-    parts.push(
-      `SELECT $1::text AS f, ${field} AS v FROM inventory WHERE ${field} IS NOT NULL AND ${field} <> ''`
-    );
-  }
-
-  // Execute each part separately for safety (dynamic column names from allowlist are safe)
+  // Parallel batch: all inventory queries + all lookup queries in two rounds
   const grouped = {};
-  for (const field of [...compositeFields, ...simpleFields]) {
-    const fromInv = await executeQuery(
-      `SELECT ${field} AS v FROM inventory WHERE ${field} IS NOT NULL AND ${field} <> ''`,
-      []
-    );
-    const fromLookup = await executeQuery(
-      `SELECT name AS v FROM lookup_values WHERE lookup_type = $1`,
-      [field]
-    );
+  for (const field of allFields) {
+    const [fromInv, fromLookup] = await Promise.all([
+      executeQuery(
+        `SELECT ${field} AS v FROM inventory WHERE ${field} IS NOT NULL AND ${field} <> ''`,
+        []
+      ),
+      executeQuery(
+        `SELECT name AS v FROM lookup_values WHERE lookup_type = $1`,
+        [field]
+      ),
+    ]);
     const combined = [...fromInv.rows, ...fromLookup.rows];
     const values = new Set();
     for (const row of combined) {
@@ -282,19 +255,23 @@ const searchUserInventory = async (q) => {
 };
 
 const getAssetById = async (id) => {
+  const numericId = Number(id);
+  if (isNaN(numericId)) throw new ApiError(400, "Invalid asset ID");
   const result = await executeQuery(
     `SELECT * FROM inventory WHERE id = $1`,
-    [Number(id)]
+    [numericId]
   );
   if (!result.rows[0]) throw new ApiError(404, "Inventory record not found");
   return result.rows[0];
 };
 
 const deleteAsset = async (id) => {
-  const asset = await getAssetById(id);
+  const numericId = Number(id);
+  if (isNaN(numericId)) throw new ApiError(400, "Invalid asset ID");
+  const asset = await getAssetById(numericId);
   await executeQuery(
     `DELETE FROM inventory WHERE id = $1`,
-    [Number(id)]
+    [numericId]
   );
   return asset;
 };
@@ -328,8 +305,8 @@ const addDropdownValue = async (field, value) => {
   }
 
   const result = await executeQuery(
-    `INSERT INTO lookup_values (lookup_type, name, code) RETURNING id, name AS value, code
-     VALUES ($1, $2, $3)`,
+    `INSERT INTO lookup_values (lookup_type, name, code)
+     VALUES ($1, $2, $3) RETURNING id, name AS value, code`,
     [field, normalizedValue, normalizedCode]
   );
 

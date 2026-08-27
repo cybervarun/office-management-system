@@ -1,7 +1,8 @@
 # User & Administrator Guide
 
-**Version:** 1.0.0
-**Date:** 2026-08-24
+**Version:** 2.0.0
+**Date:** 2026-08-27
+**Updated:** PostgreSQL migration complete — all MSSQL references replaced
 
 ---
 
@@ -95,7 +96,7 @@ If you belong to an assigned team:
 ### 1.1 Prerequisites
 
 - Node.js 18+ installed
-- Microsoft SQL Server 2019+ available
+- PostgreSQL 14+ installed and running
 - npm or yarn package manager
 
 ### 1.2 Environment Configuration
@@ -103,14 +104,17 @@ If you belong to an assigned team:
 Create `backend/.env` with the following variables:
 
 ```env
-# Database
-DB_USER=sa
-DB_PASS=yourStrongPassword
-DB_SERVER=127.0.0.1
-DB_NAME=OfficeManagement
-DB_PORT=1433
-DB_ENCRYPT=false
-DB_TRUST_CERT=true
+# Database (PostgreSQL)
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=office_management
+DB_USER=postgres
+DB_PASSWORD=your-postgres-password
+
+# Connection pool
+DB_POOL_MAX=20
+DB_POOL_TIMEOUT=10000
+DB_CONNECTION_TIMEOUT=5000
 
 # Application
 JWT_SECRET=your-super-secret-jwt-key-min-32-chars
@@ -125,7 +129,7 @@ PORT=5000
 ```bash
 cd backend
 npm install
-npm run init-db       # Applies schema.sql to SQL Server
+npm run migrate-pg    # Applies PostgreSQL_Schema_DDL.sql to PostgreSQL
 node scripts/create_admin.js    # Creates the first Admin account
 ```
 
@@ -290,7 +294,7 @@ When a dropdown option (e.g., a new ministry or department) is needed:
 | Problem | Cause | Fix |
 |---------|-------|-----|
 | Backend won't start | Missing `DB_PASS` env var | Set `DB_PASS` in `backend/.env` |
-| Backend: "DB Connection Failed" | SQL Server unreachable | Verify `DB_SERVER`, `DB_PORT`, credentials |
+| Backend: "DB Connection Failed" | PostgreSQL unreachable | Verify `DB_HOST`, `DB_PORT`, `DB_PASSWORD` |
 | Frontend: "Network Error" | Backend not running | Start backend with `npm run dev` |
 | Login: "Invalid credentials" | Wrong email/password or account inactive | Verify credentials; ask Admin to activate account |
 | Login: "User is inactive" | `is_active = 0` | Admin must click Activate |
@@ -303,5 +307,5 @@ When a dropdown option (e.g., a new ministry or department) is needed:
 
 - Session tokens expire after **8 hours**. Log out and back in if you get redirected.
 - Never share your password. Admins will never ask for it.
-- All data is stored on the office SQL Server — no data leaves the internal network.
+- All data is stored on the office PostgreSQL server — no data leaves the internal network.
 - Report any suspicious login activity to the IT Admin immediately.

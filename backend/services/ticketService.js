@@ -15,8 +15,8 @@ const createTicket = async (payload, actorUserId) => {
   const result = await executeQuery(
     `INSERT INTO tickets
       (title, description, status, created_by, assigned_team, inventory_id, work_notes)
-     RETURNING *
-     VALUES ($1, $2, 'Open', $3, $4, $5, $6)`,
+     VALUES ($1, $2, 'Open', $3, $4, $5, $6)
+     RETURNING *`,
     [
       payload.title,
       payload.description,
@@ -57,9 +57,11 @@ const listTickets = async (pagination, filters = {}) => {
   if (filters.search && filters.search.trim()) {
     const searchTerm = `%${filters.search.trim()}%`;
     const searchFields = ["t.title", "t.description", "u.name"];
-    const searchClause = searchFields.map(() => `$${params.length + 1}`).join(" OR ");
+    const searchClause = searchFields
+      .map((field, i) => `${field} LIKE $${params.length + 1 + i}`)
+      .join(" OR ");
     conditions.push(`(${searchClause})`);
-    params.push(searchTerm);
+    for (let i = 0; i < searchFields.length; i++) params.push(searchTerm);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -78,7 +80,7 @@ const listTickets = async (pagination, filters = {}) => {
     INNER JOIN users u ON u.id = t.created_by
     ${whereClause}
   `;
-  const countResult = await executeQuery(countQuery, params.slice(0, params.length - 2));
+  const countResult = await executeQuery(countQuery, params);
   const total = parseInt(countResult.rows[0]?.total || 0, 10);
 
   const query = `
@@ -113,19 +115,21 @@ const getTicketById = async (id) => {
 
 const assignTeam = async (id, toTeam, actorUserId, note = null) => {
   if (!validTeams.includes(toTeam)) throw new ApiError(400, "Invalid team");
-  const ticketResult = await executeQuery("SELECT * FROM tickets WHERE id = $1", [Number(id)]);
+  const numId = Number(id);
+
+  const ticketResult = await executeQuery("SELECT * FROM tickets WHERE id = $1", [numId]);
   const ticket = ticketResult.rows[0];
   if (!ticket) throw new ApiError(404, "Ticket not found");
 
   await executeQuery(
     "UPDATE tickets SET assigned_team = $1, updated_at = NOW() WHERE id = $2",
-    [toTeam, Number(id)]
+    [toTeam, numId]
   );
 
   await executeQuery(
     `INSERT INTO ticket_history (ticket_id, action, from_team, to_team, note, performed_by)
      VALUES ($1, 'Assigned', $2, $3, $4, $5)`,
-    [Number(id), ticket.assigned_team, toTeam, note || "Assignment updated", actorUserId]
+    [numId, ticket.assigned_team, toTeam, note || "Assignment updated", actorUserId]
   );
 
   return getTicketById(id);
@@ -133,19 +137,21 @@ const assignTeam = async (id, toTeam, actorUserId, note = null) => {
 
 const transferTicket = async (id, toTeam, actorUserId, note = null) => {
   if (!validTeams.includes(toTeam)) throw new ApiError(400, "Invalid team");
-  const ticketResult = await executeQuery("SELECT * FROM tickets WHERE id = $1", [Number(id)]);
+  const numId = Number(id);
+
+  const ticketResult = await executeQuery("SELECT * FROM tickets WHERE id = $1", [numId]);
   const ticket = ticketResult.rows[0];
   if (!ticket) throw new ApiError(404, "Ticket not found");
 
   await executeQuery(
     "UPDATE tickets SET assigned_team = $1, updated_at = NOW() WHERE id = $2",
-    [toTeam, Number(id)]
+    [toTeam, numId]
   );
 
   await executeQuery(
     `INSERT INTO ticket_history (ticket_id, action, from_team, to_team, note, performed_by)
      VALUES ($1, 'Transferred', $2, $3, $4, $5)`,
-    [Number(id), ticket.assigned_team, toTeam, note || "Transferred", actorUserId]
+    [numId, ticket.assigned_team, toTeam, note || "Transferred", actorUserId]
   );
 
   return getTicketById(id);
@@ -163,7 +169,7 @@ const updateStatus = async (id, status, actorUserId) => {
   if (!ticket) throw new ApiError(404, "Ticket not found");
 
   const result = await executeQuery(
-    "UPDATE tickets SET status = $1, updated_at = NOW() RETURNING * WHERE id = $2",
+    "UPDATE tickets SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
     [status, Number(id)]
   );
   const updated = result.rows[0];
@@ -193,7 +199,7 @@ const addWorkNotes = async (id, workNotes, actorUserId) => {
     : `${new Date().toISOString()} - ${workNotes}`;
 
   const result = await executeQuery(
-    "UPDATE tickets SET work_notes=$1, updated_at=NOW() RETURNING * WHERE id=$2",
+    "UPDATE tickets SET work_notes=$1, updated_at=NOW() WHERE id=$2 RETURNING *",
     [merged, Number(id)]
   );
 

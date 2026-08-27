@@ -56,21 +56,21 @@ const getReports = async () => {
   `);
 
   return {
-    assetsByStatus: assetsByStatus.rows,
-    assetsByMinistry: assetsByMinistry.rows,
-    ticketsByTeam: ticketsByTeam.rows,
-    ticketsByStatus: ticketsByStatus.rows,
+    assetsByStatus: assetsByStatus.rows.map(r => ({ label: r.label, count: parseInt(r.count, 10) })),
+    assetsByMinistry: assetsByMinistry.rows.map(r => ({ label: r.label, count: parseInt(r.count, 10) })),
+    ticketsByTeam: ticketsByTeam.rows.map(r => ({ label: r.label, count: parseInt(r.count, 10) })),
+    ticketsByStatus: ticketsByStatus.rows.map(r => ({ label: r.label, count: parseInt(r.count, 10) })),
     ticketTrend: ticketTrend.rows.map(r => ({
       date: r.date,
-      count: r.count
+      count: parseInt(r.count, 10)
     })).reverse(),
     totals: {
-      totalAssets: totalAssets.rows[0]?.cnt || 0,
-      totalTickets: totalTickets.rows[0]?.cnt || 0,
-      openTickets: openTickets.rows[0]?.cnt || 0,
-      resolvedTickets: resolvedTickets.rows[0]?.cnt || 0
+      totalAssets: parseInt(totalAssets.rows[0]?.cnt || 0, 10),
+      totalTickets: parseInt(totalTickets.rows[0]?.cnt || 0, 10),
+      openTickets: parseInt(openTickets.rows[0]?.cnt || 0, 10),
+      resolvedTickets: parseInt(resolvedTickets.rows[0]?.cnt || 0, 10)
     },
-    usersByRole: usersByRole.rows
+    usersByRole: usersByRole.rows.map(r => ({ label: r.label, count: parseInt(r.count, 10) })),
   };
 };
 

@@ -6,6 +6,7 @@ const createUser = async (payload) => {
   const hash = await bcrypt.hash(payload.password, 10);
   const result = await executeQuery(
     `INSERT INTO users (name, email, phone, role, password_hash, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING id, name, email, phone, role, is_active`,
     [payload.name, payload.email, payload.phone || null, payload.role, hash, true]
   );
@@ -15,8 +16,8 @@ const createUser = async (payload) => {
 const editRole = async (id, role) => {
   const result = await executeQuery(
     `UPDATE users SET role = $1, updated_at = NOW()
-     RETURNING id, name, email, phone, role, is_active
-     WHERE id = $2`,
+     WHERE id = $2
+     RETURNING id, name, email, phone, role, is_active`,
     [role, Number(id)]
   );
   if (!result.rows[0]) throw new ApiError(404, "User not found");
@@ -61,8 +62,8 @@ const editUser = async (id, payload) => {
 
   const result = await executeQuery(
     `UPDATE users SET ${fields.join(", ")}
-     RETURNING id, name, email, phone, role, is_active
-     WHERE id = $${paramIndex}`,
+     WHERE id = $${paramIndex}
+     RETURNING id, name, email, phone, role, is_active`,
     params
   );
   if (!result.rows[0]) throw new ApiError(404, "User not found");
@@ -72,8 +73,8 @@ const editUser = async (id, payload) => {
 const setActive = async (id, active) => {
   const result = await executeQuery(
     `UPDATE users SET is_active = $1, updated_at = NOW()
-     RETURNING id, name, email, phone, role, is_active
-     WHERE id = $2`,
+     WHERE id = $2
+     RETURNING id, name, email, phone, role, is_active`,
     [!!active, Number(id)]
   );
   if (!result.rows[0]) throw new ApiError(404, "User not found");
@@ -124,11 +125,11 @@ const listUsers = async (pagination, filters = {}) => {
       ? pagination.sortBy
       : "created_at";
 
-  const orderClause = `ORDER BY ${sortBy} ${pagination.sortDirection}`;
+  const orderClause = `ORDER BY ${sortBy} ${pagination.sortDirection || 'DESC'}`;
 
   // Separate count query for total
   const countQuery = `SELECT COUNT(*) AS total FROM users ${whereClause}`;
-  const countResult = await executeQuery(countQuery, params.slice(0, -2));
+  const countResult = await executeQuery(countQuery, params);
   const total = parseInt(countResult.rows[0]?.total || 0, 10);
 
   const query = `

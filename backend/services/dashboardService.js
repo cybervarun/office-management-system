@@ -33,11 +33,11 @@ const getStats = async () => {
   );
 
   return {
-    totalAssets: total.rows[0]?.cnt || 0,
-    assignedAssets: assigned.rows[0]?.cnt || 0,
-    availableAssets: available.rows[0]?.cnt || 0,
-    inMaintenance: inMaintenance.rows[0]?.cnt || 0,
-    openTickets: openTickets.rows[0]?.cnt || 0,
+    totalAssets: parseInt(total.rows[0]?.cnt || 0, 10),
+    assignedAssets: parseInt(assigned.rows[0]?.cnt || 0, 10),
+    availableAssets: parseInt(available.rows[0]?.cnt || 0, 10),
+    inMaintenance: parseInt(inMaintenance.rows[0]?.cnt || 0, 10),
+    openTickets: parseInt(openTickets.rows[0]?.cnt || 0, 10),
     recentAssets: recentAssets.rows || [],
     recentTickets: recentTickets.rows || []
   };

@@ -1,8 +1,24 @@
-# User Flows — Version 1.1
+# User Flows — Version 2.0
 
-> **Updated:** 2026-08-25 · Day 3 User Workflow Definition
-> **Previous version:** 1.0 (original)
-> **Changes:** Expanded all flows with granular UI interaction details; added 3 new flows for Dashboard, Settings, and Reports.
+> **Updated:** 2026-08-27 · Day 8 — RBAC Audit & Documentation Sync
+> **Previous version:** 1.1 (2026-08-25, Day 3)
+> **Changes:** Added RBAC permission context to all flows; expanded Flow 5 with role-change, password-reset, and activate/deactivate endpoints; verified all 8 flows against actual route definitions.
+
+## RBAC Quick Reference
+
+All flows assume the user is authenticated (valid JWT in `Authorization: Bearer <token>`). The role determines what operations are available:
+
+| Role | Users (CRUD) | Inventory (Write) | Tickets (Write) | Dashboard | Reports | Settings |
+|------|-------------|-------------------|-----------------|-----------|---------|----------|
+| Admin | ✅ All | ✅ All | ✅ All | ✅ | ✅ | ✅ |
+| Help Desk | ❌ | ✅ Create/Edit/Delete | ✅ Create | ✅ | ✅ | ❌ |
+| IT Team | ❌ | ❌ | ✅ Status/Notes | ❌ | ❌ | ❌ |
+| Network Team | ❌ | ❌ (read-only) | ✅ Status/Notes | ❌ | ❌ | ❌ |
+| Cybersecurity | ❌ | ❌ (read-only) | ✅ Status/Notes | ❌ | ❌ | ❌ |
+
+- **401** = missing/invalid JWT token
+- **403** = valid token but role not permitted for this endpoint
+- Full matrix: `docs/ARCHITECTURE.md` §3 · Audit: `docs/security/RBAC_AUDIT.md`
 
 ---
 
@@ -324,7 +340,7 @@ sequenceDiagram
     participant UserSvc as userService
     participant API as /api/users
 
-    User->>UserUI: Navigates to /users
+    User->>UserUI: Navigates to /users (Admin only — 403 for other roles)
     UserUI->>API: GET /api/users?page=1&pageSize=10
     API-->>UserUI: Paginated user list
     UserUI->>User: Renders "Create New User" form + user table
@@ -333,26 +349,60 @@ sequenceDiagram
         User->>UserUI: Fills name, email, phone, role, password
         User->>UserUI: Clicks "Create User"
         UserUI->>UserSvc: createUser(form)
-        UserSvc->>API: POST /api/users
-        API-->>UserSvc: {id, name, email, ...}
+        UserSvc->>API: POST /api/users {name, email, phone, role, password}
+        API-->>UserSvc: {id, name, email, role, is_active}
         UserSvc-->>UserUI: Returns created user
         UserUI->>UserUI: Resets form, reloads list
-    else Edit user
+    else Edit user details
         User->>UserUI: Clicks "Edit" on a row
         UserUI->>UserUI: Opens edit modal pre-populated with user data
-        User->>UserUI: Modifies fields, clicks "Save Changes"
-        UserUI->>UserSvc: editUserApi(id, form)
+        User->>UserUI: Modifies name/email/phone, clicks "Save Changes"
+        UserUI->>UserSvc: editUserApi(id, {name, email, phone})
         UserSvc->>API: PATCH /api/users/:id
         API-->>UserSvc: Updated user
         UserUI->>UserUI: Closes modal, reloads list
+    else Change role
+        User->>UserUI: Clicks "Change Role" on a row
+        UserUI->>UserUI: Opens role selector modal
+        User->>UserUI: Selects new role from dropdown
+        UserUI->>UserSvc: editRoleApi(id, newRole)
+        UserSvc->>API: PATCH /api/users/:id/role {role: "..."}
+        API-->>UserSvc: Updated user
+        UserUI->>UserUI: Closes modal, row badge updates
+    else Reset password
+        User->>UserUI: Clicks "Reset Password" on a row
+        UserUI->>UserUI: Opens password reset modal
+        User->>UserUI: Enters new password (min 8 chars)
+        UserUI->>UserSvc: updatePasswordApi(id, newPassword)
+        UserSvc->>API: PATCH /api/users/:id/password {password: "..."}
+        API-->>UserSvc: {message: "Password updated"}
+        UserUI->>UserUI: Shows success toast, closes modal
     else Toggle active
         User->>UserUI: Clicks "Activate"/"Deactivate"
-        UserUI->>UserSvc: activateUser(id) or deactivateUser(id)
-        UserSvc->>API: PATCH /api/users/:id/active
+        alt Deactivate
+            UserUI->>UserSvc: deactivateUser(id)
+            UserSvc->>API: PATCH /api/users/:id/deactivate
+        else Activate
+            UserUI->>UserSvc: activateUser(id)
+            UserSvc->>API: PATCH /api/users/:id/activate
+        end
         API-->>UserSvc: Updated user
         UserUI->>UserUI: Row badge updates immediately
     end
 ```
+
+### API Endpoints Used
+
+| Operation | Method | Endpoint | RBAC |
+|-----------|--------|----------|------|
+| List users | GET | `/api/users` | Admin only |
+| Create user | POST | `/api/users` | Admin only |
+| Edit user | PATCH | `/api/users/:id` | Admin only |
+| Change role | PATCH | `/api/users/:id/role` | Admin only |
+| Reset password | PATCH | `/api/users/:id/password` | Admin only |
+| Activate | PATCH | `/api/users/:id/activate` | Admin only |
+| Deactivate | PATCH | `/api/users/:id/deactivate` | Admin only |
+| Search users | GET | `/api/users/search?q=...` | All authenticated roles |
 
 ### Step-by-Step UI Interactions
 
@@ -383,21 +433,22 @@ sequenceDiagram
 ### Validation Rules
 - **Name:** required, non-empty
 - **Email:** required, valid email format
-- **Password:** required on create, min 8 characters (client-side)
-- **Role:** required, must be one of the 5 allowed roles
+- **Password:** required on create, min 8 characters (client-side; server also validates)
+- **Role:** required on create, must be one of: Admin / Help Desk / IT Team / Network Team / Cybersecurity
+- **Activate/Deactivate:** Admin only; no body required (path-based)
 
 ---
 
-## Flow 6: Dashboard Overview *(New — was implicit)*
+## Flow 6: Dashboard Overview
 
 ```mermaid
 sequenceDiagram
     participant User
     participant DashUI as Dashboard
-    participant API as /api/dashboard/stats
+    participant API as /api/dashboard
 
     User->>DashUI: Navigates to / (after login)
-    DashUI->>API: GET /api/dashboard/stats
+    DashUI->>API: GET /api/dashboard
     API-->>DashUI: {totalAssets, assignedAssets, availableAssets, inMaintenance, openTickets, recentAssets, recentTickets}
     DashUI->>User: Renders 4 stat cards + quick actions + recent items
     User->>DashUI: Clicks "Inventory" quick action
@@ -406,7 +457,7 @@ sequenceDiagram
     DashUI->>User: Navigates to /tickets
     User->>DashUI: Clicks "Raise Ticket" quick action
     DashUI->>User: Navigates to /raise-ticket
-    User->>DashUI: Clicks "Users" quick action
+    User->>DashUI: Clicks "Users" quick action (Admin only — 403 for non-Admin)
     DashUI->>User: Navigates to /users
     User->>DashUI: Clicks "View all →" on Recent Assets
     DashUI->>User: Navigates to /inventory
@@ -418,6 +469,7 @@ sequenceDiagram
 
 | Element | Behaviour |
 |---------|-----------|
+| RBAC | Admin / Help Desk / IT Team only; 403 for Network Team and Cybersecurity |
 | Loading state | 4 placeholder stat-card skeletons shown while API loads |
 | Stat cards | 4 cards: Total Assets, Available, Assigned, Open Tickets; each shows trend label and sparkline |
 | Quick actions | 4 action cards with icons; click navigates to the corresponding page |
@@ -471,6 +523,9 @@ sequenceDiagram
     User->>RepUI: Clicks "Export CSV"
     RepUI->>User: Triggers browser download of CSV file
 ```
+
+### RBAC
+Admin / Help Desk / IT Team only; 403 for Network Team and Cybersecurity.
 
 ### UI Details
 | Element | Behaviour |

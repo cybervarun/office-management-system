@@ -66,21 +66,26 @@ app.use((req, res) => {
 
 app.use(errorHandler);
 
-const port = Number(process.env.PORT || 5000);
+// Export the express app for testing
+if (require.main !== module) {
+  module.exports = app;
+} else {
+  const port = Number(process.env.PORT || 5000);
 
-logConnectionTarget();
+  logConnectionTarget();
 
-poolConnect
-  .then(() => {
-    console.log("DB Connected");
-    app.listen(port, () => {
-      console.log(`Server running on port ${port}`);
+  poolConnect
+    .then(() => {
+      console.log("DB Connected");
+      app.listen(port, () => {
+        console.log(`Server running on port ${port}`);
+      });
+    })
+    .catch((err) => {
+      console.error("DB Connection Failed:", err.message);
+      if (err.originalError?.message) {
+        console.error("PostgreSQL Error:", err.originalError.message);
+      }
+      process.exit(1);
     });
-  })
-  .catch((err) => {
-    console.error("DB Connection Failed:", err.message);
-    if (err.originalError?.message) {
-      console.error("SQL Server Error:", err.originalError.message);
-    }
-    process.exit(1);
-  });
+}
