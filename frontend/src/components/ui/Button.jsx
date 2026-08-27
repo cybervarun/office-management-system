@@ -5,12 +5,24 @@ export default function Button({
   variant = "primary",
   size = "md",
   type = "button",
+  danger = false,
   ...props
 }) {
+  const baseClass = `btn btn-${variant}`;
+  const sizeClass = size !== "md" ? ` btn-${size}` : "";
+  const dangerClass = danger ? " danger-ghost" : "";
+  const iconEl = Icon ? <Icon aria-hidden="true" /> : null;
+  const hasIcon = !!Icon;
+  const iconOnly = hasIcon && !children;
+
   return (
-    <button className={`btn btn-${variant} btn-${size} ${className}`.trim()} type={type} {...props}>
-      {Icon && <Icon aria-hidden="true" />}
-      <span>{children}</span>
+    <button
+      className={`${baseClass}${sizeClass}${dangerClass}${iconOnly ? ' btn-icon' : ''} ${className}`.trim()}
+      type={type}
+      {...props}
+    >
+      {iconEl}
+      {children && <span>{children}</span>}
     </button>
   );
 }

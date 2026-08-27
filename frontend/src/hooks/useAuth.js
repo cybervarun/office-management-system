@@ -1,11 +1,17 @@
 import { useMemo, useState } from "react";
 
+function safeParseStorage(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export default function useAuth() {
-  const [token, setToken] = useState(localStorage.getItem("token"));
-  const [user, setUser] = useState(() => {
-    const raw = localStorage.getItem("user");
-    return raw ? JSON.parse(raw) : null;
-  });
+  const [token, setToken] = useState(() => safeParseStorage("token", null));
+  const [user, setUser] = useState(() => safeParseStorage("user", null));
 
   const login = (nextToken, nextUser) => {
     localStorage.setItem("token", nextToken);

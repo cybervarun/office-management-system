@@ -1,12 +1,15 @@
-const path = require("path");
-require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
+require("dotenv").config();
 
-const sql = require("mssql");
+const { Pool, Client } = require("pg");
 
 const getRequiredEnv = (...names) => {
-  const value = names.map((name) => process.env[name]).find((item) => item && String(item).trim());
+  const value = names
+    .map((n) => process.env[n])
+    .find((item) => item && String(item).trim());
   if (!value || !String(value).trim()) {
-    throw new Error(`${names.join(" or ")} is missing in .env`);
+    throw new Error(
+      `${names.join(" or ")} is missing in .env`
+    );
   }
   return String(value).trim();
 };
@@ -19,57 +22,112 @@ const parsePort = (value) => {
   return port;
 };
 
-const config = {
-  user: process.env.DB_USER || process.env.SA_USER || "sa",
-  password: process.env.DB_PASS || process.env.SA_PASSWORD || process.env.MSSQL_SA_PASSWORD,
-  server: process.env.DB_SERVER || "127.0.0.1",
-  database: process.env.DB_NAME || process.env.MSSQL_DB || "OfficeManagement",
-  port: parsePort(process.env.DB_PORT || "1433"),
-  options: {
-    encrypt: String(process.env.DB_ENCRYPT || "false").toLowerCase() === "true",
-    trustServerCertificate: String(process.env.DB_TRUST_CERT || "true").toLowerCase() === "true"
-  },
-  pool: {
-    max: Number(process.env.DB_POOL_MAX || "10"),
-    min: Number(process.env.DB_POOL_MIN || "0"),
-    idleTimeoutMillis: Number(process.env.DB_POOL_TIMEOUT || "30000")
-  }
+// Lazy pool — created on first use so that test stubs of executeQuery
+// never trigger env-var validation at module-load time.
+let _pool = null;
+let _poolPromise = null;
+
+const ensurePool = () => {
+  if (_pool) return _pool;
+  if (_poolPromise) return _poolPromise;
+  _poolPromise = (async () => {
+    const host = getRequiredEnv("DB_HOST");
+    const port = parsePort(process.env.DB_PORT || "5432");
+    const database = getRequiredEnv("DB_NAME");
+    const user = getRequiredEnv("DB_USER");
+    const password = getRequiredEnv("DB_PASSWORD");
+    if (!password) {
+      throw new Error(
+        "Database password must be set via DB_PASSWORD environment variable"
+      );
+    }
+    const p = new Pool({
+      host,
+      port,
+      database,
+      user,
+      password,
+      max: Number(process.env.DB_POOL_MAX || "20"),
+      idleTimeoutMillis: Number(process.env.DB_POOL_TIMEOUT || "10000"),
+      connectionTimeoutMillis: Number(process.env.DB_CONNECTION_TIMEOUT || "5000"),
+    });
+    p.on("error", (err) => {
+      console.error("Unexpected pg pool error:", err);
+    });
+    _pool = p;
+    return p;
+  })();
+  return _poolPromise;
 };
 
-if (!config.password) {
-  throw new Error("Database password must be set via DB_PASS, SA_PASSWORD, or MSSQL_SA_PASSWORD environment variable");
-}
-
-const pool = new sql.ConnectionPool(config);
-const poolConnect = pool.connect();
-
-pool.on("error", (err) => {
-  console.error("SQL Server pool error:", err);
-});
-
 const logConnectionTarget = () => {
+  const host = process.env.DB_HOST || "unknown";
+  const port = process.env.DB_PORT || "5432";
+  const database = process.env.DB_NAME || "unknown";
+  const user = process.env.DB_USER || "unknown";
   console.log(
-    `Connecting to SQL Server ${config.server}:${config.port}, database ${config.database}, user ${config.user}`
+    `Connecting to PostgreSQL ${host}:${port}, database ${database}, user ${user}`
   );
 };
 
-const executeQuery = async (query, params = []) => {
-  await poolConnect;
-  const request = pool.request();
-  params.forEach((p) => request.input(p.name, p.type, p.value));
-  return request.query(query);
+/**
+ * Execute a parameterized query using a pooled connection.
+ * @param {string} text - SQL text with $1, $2, ... placeholders
+ * @param {unknown[]} values - Array of parameter values
+ * @returns {Promise<pg.QueryResult>}
+ */
+const executeQuery = async (text, values = []) => {
+  const pool = await ensurePool();
+  const client = await pool.connect();
+  try {
+    return await client.query(text, values);
+  } finally {
+    client.release();
+  }
 };
 
-const getPool = async () => {
-  await poolConnect;
-  return pool;
+/**
+ * Execute a query inside an explicit transaction.
+ * The callback receives a client that must be committed or rolled back.
+ * @param {(client: import('pg').Client) => Promise<unknown>} fn
+ * @returns {Promise<unknown>}
+ */
+const executeTransaction = async (fn) => {
+  const pool = await ensurePool();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 };
+
+/**
+ * Get the raw pool instance (caller is responsible for pool lifecycle).
+ */
+const getPool = async () => ensurePool();
+
+/**
+ * poolConnect — resolves when the pool is created AND a test query succeeds.
+ * app.js awaits this before starting the HTTP server.
+ * Rejects with a descriptive error if the database is unreachable.
+ */
+const poolConnect = ensurePool().then(async (pool) => {
+  await pool.query("SELECT 1 AS connect_test");
+  return pool;
+});
 
 module.exports = {
-  sql,
-  pool,
+  get pool() { return _pool; },
   poolConnect,
-  logConnectionTarget,
+  getPool,
   executeQuery,
-  getPool
+  executeTransaction,
+  logConnectionTarget,
 };

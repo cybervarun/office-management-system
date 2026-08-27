@@ -42,14 +42,62 @@ const createTicket = async (payload, actorUserId) => {
   return ticket;
 };
 
-const listTickets = async () => {
-  const result = await executeQuery(
-    `SELECT t.*, u.name AS created_by_name
-     FROM tickets t
-     INNER JOIN users u ON u.id = t.created_by
-     ORDER BY t.created_at DESC`
-  );
-  return result.recordset;
+const ALLOWED_TICKET_SORT_COLUMNS = [
+  "id", "title", "status", "assigned_team", "created_by",
+  "inventory_id", "created_at", "updated_at", "created_by_name"
+];
+
+const listTickets = async (pagination, filters = {}) => {
+  const conditions = [];
+  const params = [];
+  let paramIndex = 0;
+
+  const addCondition = (sqlClause, value, type) => {
+    if (value === undefined || value === null || value === "") return;
+    const paramName = `p${paramIndex++}`;
+    conditions.push(sqlClause.replace("@p", `@${paramName}`));
+    params.push({ name: paramName, type, value });
+  };
+
+  addCondition("t.status = @p", filters.status, sql.NVarChar(50));
+  addCondition("t.assigned_team = @p", filters.assigned_team, sql.NVarChar(100));
+
+  if (filters.search && filters.search.trim()) {
+    const searchTerm = `%${filters.search.trim()}%`;
+    const searchFields = ["t.title", "t.description", "u.name"];
+    const searchClause = searchFields.map(f => `${f} LIKE @searchTerm`).join(" OR ");
+    conditions.push(`(${searchClause})`);
+    params.push({ name: "searchTerm", type: sql.NVarChar(255), value: searchTerm });
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const sortBy = pagination.sortBy && ALLOWED_TICKET_SORT_COLUMNS.includes(pagination.sortBy)
+    ? pagination.sortBy
+    : "t.created_at";
+
+  const orderClause = `ORDER BY ${sortBy} ${pagination.sortDirection}`;
+
+  const query = `
+    SELECT t.*, u.name AS created_by_name, COUNT(*) OVER() AS _totalCount
+    FROM tickets t
+    INNER JOIN users u ON u.id = t.created_by
+    ${whereClause}
+    ${orderClause}
+    OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
+  `;
+
+  const allParams = [
+    ...params,
+    { name: "offset", type: sql.Int, value: pagination.offset },
+    { name: "pageSize", type: sql.Int, value: pagination.pageSize }
+  ];
+
+  const result = await executeQuery(query, allParams);
+  const records = result.recordset;
+  const total = records.length > 0 ? records[0]._totalCount : 0;
+  const data = records.map(({ _totalCount, ...rest }) => rest);
+  return { data, total };
 };
 
 const getTicketById = async (id) => {
@@ -142,6 +190,14 @@ const transferTicket = async (id, toTeam, actorUserId, note = null) => {
 const updateStatus = async (id, status, actorUserId) => {
   const allowed = ["Open", "In Progress", "Pending", "Resolved", "Closed"];
   if (!allowed.includes(status)) throw new ApiError(400, "Invalid status");
+
+  // Capture current status before update
+  const current = await executeQuery("SELECT status, assigned_team FROM tickets WHERE id = @id", [
+    { name: "id", type: sql.Int, value: Number(id) }
+  ]);
+  const ticket = current.recordset[0];
+  if (!ticket) throw new ApiError(404, "Ticket not found");
+
   const result = await executeQuery(
     "UPDATE tickets SET status = @status, updated_at = SYSUTCDATETIME() OUTPUT INSERTED.* WHERE id = @id",
     [
@@ -149,8 +205,8 @@ const updateStatus = async (id, status, actorUserId) => {
       { name: "status", type: sql.NVarChar(50), value: status }
     ]
   );
-  const ticket = result.recordset[0];
-  if (!ticket) throw new ApiError(404, "Ticket not found");
+  const updated = result.recordset[0];
+  if (!updated) throw new ApiError(404, "Ticket not found");
 
   await executeQuery(
     `INSERT INTO ticket_history (ticket_id, action, from_team, to_team, note, performed_by)
@@ -158,12 +214,12 @@ const updateStatus = async (id, status, actorUserId) => {
     [
       { name: "ticket_id", type: sql.Int, value: Number(id) },
       { name: "from_team", type: sql.NVarChar(100), value: ticket.assigned_team },
-      { name: "to_team", type: sql.NVarChar(100), value: ticket.assigned_team },
-      { name: "note", type: sql.NVarChar(500), value: `Status changed to ${status}` },
+      { name: "to_team", type: sql.NVarChar(100), value: updated.assigned_team },
+      { name: "note", type: sql.NVarChar(500), value: `${ticket.status} → ${status}` },
       { name: "performed_by", type: sql.Int, value: actorUserId }
     ]
   );
-  return ticket;
+  return updated;
 };
 
 const addWorkNotes = async (id, workNotes, actorUserId) => {
@@ -200,6 +256,34 @@ const addWorkNotes = async (id, workNotes, actorUserId) => {
   return result.recordset[0];
 };
 
+const deleteTicket = async (id, actorUserId) => {
+  const ticketResult = await executeQuery("SELECT * FROM tickets WHERE id = @id", [
+    { name: "id", type: sql.Int, value: Number(id) }
+  ]);
+  const ticket = ticketResult.recordset[0];
+  if (!ticket) throw new ApiError(404, "Ticket not found");
+
+  await executeQuery(
+    `INSERT INTO ticket_history (ticket_id, action, from_team, to_team, note, performed_by)
+     VALUES (@ticket_id, 'Deleted', @from_team, NULL, @note, @performed_by)`,
+    [
+      { name: "ticket_id", type: sql.Int, value: Number(id) },
+      { name: "from_team", type: sql.NVarChar(100), value: ticket.assigned_team },
+      { name: "note", type: sql.NVarChar(500), value: "Ticket deleted" },
+      { name: "performed_by", type: sql.Int, value: actorUserId }
+    ]
+  );
+
+  // Delete history first to respect FK constraint, then delete ticket
+  await executeQuery("DELETE FROM ticket_history WHERE ticket_id = @id", [
+    { name: "id", type: sql.Int, value: Number(id) }
+  ]);
+  await executeQuery("DELETE FROM tickets WHERE id = @id", [
+    { name: "id", type: sql.Int, value: Number(id) }
+  ]);
+  return ticket;
+};
+
 module.exports = {
   createTicket,
   listTickets,
@@ -208,5 +292,6 @@ module.exports = {
   transferTicket,
   updateStatus,
   addWorkNotes,
+  deleteTicket,
   validTeams
 };

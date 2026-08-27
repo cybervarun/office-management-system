@@ -89,10 +89,51 @@ const inventoryValidators = [
   body("custodian").optional()
 ];
 
-router.get("/", allowRoles("Admin", "Help Desk", "IT Team", "Network Team", "Cybersecurity"), controller.listAssets);
-router.post("/", allowRoles("Admin", "Help Desk"), inventoryValidators, validate, controller.addAsset);
-router.put("/:id", allowRoles("Admin", "Help Desk"), inventoryValidators, validate, controller.editAsset);
 router.get("/dropdowns", allowRoles("Admin", "Help Desk", "IT Team", "Network Team", "Cybersecurity"), controller.dropdowns);
+router.get("/search-user", allowRoles("Admin", "Help Desk", "IT Team", "Network Team", "Cybersecurity"), [query("q").optional().isString()], validate, controller.userSearch);
+router.get("/", allowRoles("Admin", "Help Desk", "IT Team", "Network Team", "Cybersecurity"), controller.listAssets);
+router.get("/:id", allowRoles("Admin", "Help Desk", "IT Team", "Network Team", "Cybersecurity"), controller.getAsset);
+router.post("/", allowRoles("Admin", "Help Desk"), inventoryValidators, validate, controller.addAsset);
+const editAssetValidators = [
+  body("asset_id").optional().isLength({ max: 50 }),
+  body("asset_category").optional().isLength({ max: 100 }),
+  body("asset_description").optional().isLength({ max: 500 }),
+  body("serial_number").optional().isLength({ max: 200 }),
+  body("mac_address").optional().custom(value => {
+    if (value && !/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(value)) {
+      throw new Error("Invalid MAC address format");
+    }
+    return true;
+  }),
+  body("ip_address").optional().custom(value => {
+    if (value && !/^(?:\d{1,3}\.){3}\d{1,3}$/.test(value)) {
+      throw new Error("Invalid IP address format");
+    }
+    return true;
+  }),
+  body("asset_user").optional().isLength({ max: 200 }),
+  body("asset_custodian").optional().isLength({ max: 200 }),
+  body("asset_current_status").optional().isIn(["Available", "Assigned", "In Maintenance", "Retired", "Lost", "Damaged"]),
+  body("mdo_location").optional().isLength({ max: 200 }),
+  body("ministry").optional().isLength({ max: 200 }),
+  body("department").optional().isLength({ max: 200 }),
+  body("division").optional().isLength({ max: 200 }),
+  body("block_name").optional().isLength({ max: 200 }),
+  body("floor").optional().isLength({ max: 100 }),
+  body("room").optional().isLength({ max: 100 }),
+  body("workstation").optional().isLength({ max: 100 }),
+  body("make_brand_model").optional().isLength({ max: 300 }),
+  body("operating_system").optional().isLength({ max: 200 }),
+  body("remarks").optional().isLength({ max: 1000 }),
+  body("email").optional().isEmail({ require_tld: false }),
+  body("phone").optional().isLength({ max: 50 }),
+  body("purchase_date").optional().isISO8601(),
+  body("installation_date").optional().isISO8601(),
+  body("critical").optional().isBoolean(),
+  body("sr_no").optional().isInt(),
+];
+router.put("/:id", allowRoles("Admin", "Help Desk"), editAssetValidators, validate, controller.editAsset);
+router.delete("/:id", allowRoles("Admin", "Help Desk"), controller.deleteAsset);
 router.post(
   "/dropdowns",
   allowRoles("Admin", "Help Desk", "IT Team", "Network Team", "Cybersecurity"),
@@ -103,6 +144,5 @@ router.post(
   validate,
   controller.addDropdownValue
 );
-router.get("/search-user", allowRoles("Admin", "Help Desk", "IT Team", "Network Team", "Cybersecurity"), [query("q").optional().isString()], validate, controller.userSearch);
 
 module.exports = router;

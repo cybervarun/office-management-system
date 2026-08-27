@@ -1,5 +1,6 @@
 const asyncHandler = require("../utils/asyncHandler");
 const userService = require("../services/userService");
+const { parsePagination, paginatedResponse } = require("../utils/pagination");
 
 const createUser = asyncHandler(async (req, res) => {
   const user = await userService.createUser(req.body);
@@ -7,12 +8,23 @@ const createUser = asyncHandler(async (req, res) => {
 });
 
 const listUsers = asyncHandler(async (req, res) => {
-  const users = await userService.listUsers();
-  res.json(users);
+  const pagination = parsePagination(req.query, { defaultSort: "created_at", defaultDirection: "DESC" });
+  const filters = {
+    search: req.query.search,
+    role: req.query.role,
+    is_active: req.query.is_active
+  };
+  const { data, total } = await userService.listUsers(pagination, filters);
+  res.json(paginatedResponse(data, total, pagination));
 });
 
 const editRole = asyncHandler(async (req, res) => {
   const user = await userService.editRole(req.params.id, req.body.role);
+  res.json(user);
+});
+
+const editUser = asyncHandler(async (req, res) => {
+  const user = await userService.editUser(req.params.id, req.body);
   res.json(user);
 });
 
@@ -40,6 +52,7 @@ const search = asyncHandler(async (req, res) => {
 module.exports = {
   createUser,
   listUsers,
+  editUser,
   editRole,
   updatePassword,
   activate,

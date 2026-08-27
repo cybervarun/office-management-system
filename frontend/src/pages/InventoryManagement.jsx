@@ -12,7 +12,7 @@ import {
   FiUpload,
   FiUserCheck
 } from "react-icons/fi";
-import { addInventory, listInventory, getDropdowns, addDropdownValue } from "../services/inventoryService";
+import { addInventory, listInventory, getAsset, deleteInventory, getDropdowns, addDropdownValue } from "../services/inventoryService";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
 import FormInput from "../components/ui/FormInput";
@@ -249,10 +249,11 @@ const parseCsv = (text) => {
 export default function InventoryManagement() {
   const fileInputRef = useRef(null);
   const [items, setItems] = useState([]);
+  const [pagination, setPagination] = useState({ page: 1, pageSize: 8, total: 0, totalPages: 1 });
   const [form, setForm] = useState(initialForm);
   const [formErrors, setFormErrors] = useState({});
   const [filters, setFilters] = useState(filterDefaults);
-  const [sort, setSort] = useState({ key: "asset_user", direction: "asc" });
+  const [sort, setSort] = useState({ key: "created_at", direction: "desc" });
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [dropdownModal, setDropdownModal] = useState({ open: false, field: "", label: "" });
@@ -267,13 +268,37 @@ export default function InventoryManagement() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
+  const [viewAsset, setViewAsset] = useState(null);
+  const [viewLoading, setViewLoading] = useState(false);
+
+  /**
+   * Map client-side filter/sort/page state to API query params
+   */
+  const buildParams = () => {
+    const params = {
+      page,
+      pageSize: 8,
+      sortBy: sort.key === "created_at" ? "created_at" : sort.key,
+      sortDirection: sort.direction
+    };
+
+    if (filters.search) params.search = filters.search;
+    if (filters.ministry) params.ministry = filters.ministry;
+    if (filters.department) params.department = filters.department;
+    if (filters.assetCategory) params.asset_category = filters.assetCategory;
+    if (filters.status) params.asset_current_status = filters.status;
+
+    return params;
+  };
 
   const load = async () => {
     setError("");
     setLoading(true);
     try {
-      const [data, dropdownData] = await Promise.all([listInventory(), getDropdowns()]);
-      setItems(Array.isArray(data) ? data : []);
+      const params = buildParams();
+      const [result, dropdownData] = await Promise.all([listInventory(params), getDropdowns()]);
+      setItems(Array.isArray(result.data) ? result.data : []);
+      setPagination(result.pagination || { page, pageSize: 8, total: 0, totalPages: 1 });
       setDropdownOptions({
         ministry: dropdownData?.ministry || [],
         department: dropdownData?.department || [],
@@ -290,7 +315,7 @@ export default function InventoryManagement() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [page, sort]);
 
   useEffect(() => {
     setPage(1);
@@ -333,48 +358,19 @@ export default function InventoryManagement() {
     [items]
   );
 
-  const filteredItems = useMemo(() => {
-    const search = filters.search.trim().toLowerCase();
-    return enrichedItems.filter((item) => {
-      const matchesSearch =
-        !search ||
-        [item.asset_user, item.email, item.phone, item.department, item.workstation, item.asset_id, item.asset_category]
-          .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(search));
-
-      return (
-        matchesSearch &&
-        (!filters.ministry || item.ministry === filters.ministry) &&
-        (!filters.department || item.department === filters.department) &&
-        (!filters.assetCategory || item.asset_category === filters.assetCategory) &&
-        (!filters.status || item.asset_current_status === filters.status) &&
-        (!filters.edr || item.edr === filters.edr) &&
-        (!filters.uem || item.uem === filters.uem)
-      );
-    });
-  }, [enrichedItems, filters]);
-
-  const sortedItems = useMemo(() => {
-    return [...filteredItems].sort((a, b) => {
-      const left = String(a[sort.key] || "").toLowerCase();
-      const right = String(b[sort.key] || "").toLowerCase();
-      if (left === right) return 0;
-      return (left > right ? 1 : -1) * (sort.direction === "asc" ? 1 : -1);
-    });
-  }, [filteredItems, sort]);
-
-  const totalPages = Math.max(1, Math.ceil(sortedItems.length / pageSize));
-  const visibleItems = sortedItems.slice((page - 1) * pageSize, page * pageSize);
+  // Filtering, sorting, and pagination are now server-side via the API.
+  // enrichedItems adds computed display fields (assetType, status, edr, uem) on the current page.
+  const totalPages = pagination.totalPages;
 
   const stats = useMemo(
     () => [
-      { label: "Total Assets", value: items.length },
-      { label: "Active Assets", value: enrichedItems.filter((item) => item.status !== "In Repair").length },
-      { label: "Available Assets", value: enrichedItems.filter((item) => !item.asset_user).length },
+      { label: "Total Assets", value: pagination.total },
+      { label: "Current Page", value: items.length },
+      { label: "Active", value: enrichedItems.filter((item) => item.status !== "In Repair").length },
       { label: "In Repair", value: enrichedItems.filter((item) => item.status === "In Repair").length },
-      { label: "Assigned Assets", value: enrichedItems.filter((item) => item.asset_user).length }
+      { label: "Assigned", value: enrichedItems.filter((item) => item.asset_user).length }
     ],
-    [enrichedItems, items.length]
+    [enrichedItems, pagination.total, items.length]
   );
 
   const handleFormChange = (fieldName, value) => {
@@ -529,7 +525,7 @@ export default function InventoryManagement() {
 
   const exportCsv = () => {
     const columns = Object.keys(initialForm);
-    const rows = sortedItems.map((item) => columns.map((column) => `"${String(item[column] || "").replace(/"/g, '""')}"`).join(","));
+    const rows = items.map((item) => columns.map((column) => `"${String(item[column] || "").replace(/"/g, '""')}"`).join(","));
     downloadFile([columns.join(","), ...rows].join("\n"), "inventory-assets.csv", "text/csv;charset=utf-8");
     setToast("Inventory exported");
   };
@@ -555,7 +551,28 @@ export default function InventoryManagement() {
     }
   };
 
-  const showPendingAction = (label) => setToast(`${label} action is ready for backend wiring`);
+  const loadAssetDetail = async (id) => {
+    setViewLoading(true);
+    try {
+      const asset = await getAsset(id);
+      setViewAsset(asset);
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to load asset details");
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
+  const handleDeleteAsset = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this asset? This action cannot be undone.")) return;
+    try {
+      await deleteInventory(id);
+      setToast("Asset deleted successfully");
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.error || "Delete failed");
+    }
+  };
 
   return (
     <section className="page-stack">
@@ -659,7 +676,7 @@ export default function InventoryManagement() {
         <div className="section-title">
           <div>
             <h2>Asset Register</h2>
-            <p>{filteredItems.length} records found</p>
+            <p>{pagination.total} records found</p>
           </div>
         </div>
 
@@ -668,7 +685,7 @@ export default function InventoryManagement() {
             <span className="spinner" />
             Loading inventory records
           </div>
-        ) : visibleItems.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="empty-state">
             <FiFilePlus aria-hidden="true" />
             <h2>No inventory records found</h2>
@@ -699,7 +716,7 @@ export default function InventoryManagement() {
                 </tr>
               </thead>
               <tbody>
-                {visibleItems.map((item) => (
+                {items.map((item) => (
                   <tr key={item.id}>
                     <td>
                       <div className="asset-cell">
@@ -721,13 +738,13 @@ export default function InventoryManagement() {
                     </td>
                     <td>
                       <div className="table-actions">
-                        <Button icon={FiEye} onClick={() => showPendingAction("View")} size="icon" variant="ghost">
+                        <Button icon={FiEye} onClick={() => loadAssetDetail(item.id)} size="icon" variant="ghost">
                           View
                         </Button>
                         <Button icon={FiEdit2} onClick={() => showPendingAction("Edit")} size="icon" variant="ghost">
                           Edit
                         </Button>
-                        <Button icon={FiTrash2} onClick={() => showPendingAction("Delete")} size="icon" variant="ghost">
+                        <Button icon={FiTrash2} onClick={() => handleDeleteAsset(item.id)} size="icon" variant="ghost">
                           Delete
                         </Button>
                         <Button icon={FiUserCheck} onClick={() => showPendingAction("Assign")} size="icon" variant="ghost">
@@ -1118,6 +1135,94 @@ export default function InventoryManagement() {
         onClose={() => setDropdownModal({ open: false, field: "", label: "" })}
         onSave={handleCreateDropdownEntry}
       />
+
+      <Modal
+        open={!!viewAsset}
+        onClose={() => setViewAsset(null)}
+        title={`Asset Details - ${viewAsset?.asset_id || ""}`}
+        footer={
+          <Button onClick={() => setViewAsset(null)} variant="secondary">
+            Close
+          </Button>
+        }
+      >
+        {viewLoading ? (
+          <div className="loading-state">
+            <span className="spinner" />
+            Loading asset details
+          </div>
+        ) : viewAsset ? (
+          <div className="modal-form">
+            <FormSection title="Section 1: Basic Information">
+              <div className="form-grid-2">
+                <FormInput label="Asset ID" value={viewAsset.asset_id || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Sr. No." value={viewAsset.sr_no || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Ministry" value={viewAsset.ministry || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Department" value={viewAsset.department || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="MDO Location" value={viewAsset.mdo_location || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Division" value={viewAsset.division || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Serial Number" value={viewAsset.serial_number || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Asset Category" value={viewAsset.asset_category || "—"} type="text" className="field-readonly" readOnly />
+              </div>
+            </FormSection>
+            <FormSection title="Section 2: Asset Location">
+              <div className="form-grid-4">
+                <FormInput label="Block" value={viewAsset.block_name || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Floor" value={viewAsset.floor || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Room" value={viewAsset.room || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Workstation" value={viewAsset.workstation || "—"} type="text" className="field-readonly" readOnly />
+              </div>
+            </FormSection>
+            <FormSection title="Section 3: Asset Details">
+              <div className="form-grid-2">
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <FormInput label="Asset Description" value={viewAsset.asset_description || "—"} type="text" className="field-readonly" readOnly />
+                </div>
+                <FormInput label="Make / Brand / Model" value={viewAsset.make_brand_model || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Purchase Date" value={viewAsset.purchase_date || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Operating System" value={viewAsset.operating_system || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="IP Address" value={viewAsset.ip_address || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="MAC Address" value={viewAsset.mac_address || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Network Connection Type" value={viewAsset.network_connection_type || "—"} type="text" className="field-readonly" readOnly />
+              </div>
+            </FormSection>
+            <FormSection title="Section 4: Security & Management">
+              <div className="form-grid-2">
+                <FormInput label="EDR Installed" value={viewAsset.edr_installed || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Reason for No EDR" value={viewAsset.reason_no_edr || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="UEM Installed" value={viewAsset.uem_installed || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Reason for No UEM" value={viewAsset.reason_no_uem || "—"} type="text" className="field-readonly" readOnly />
+              </div>
+            </FormSection>
+            <FormSection title="Section 5: Ownership & Assignment">
+              <div className="form-grid-2">
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <FormInput label="Asset User" value={viewAsset.asset_user || "—"} type="text" className="field-readonly" readOnly />
+                </div>
+                <FormInput label="Asset Custodian" value={viewAsset.asset_custodian || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Asset Current Status" value={viewAsset.asset_current_status || "—"} type="text" className="field-readonly" readOnly />
+              </div>
+            </FormSection>
+            <FormSection title="Section 6: Lifecycle & Support">
+              <div className="form-grid-2">
+                <FormInput label="Installation Date" value={viewAsset.installation_date || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Date of Removal" value={viewAsset.date_of_removal || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="End of Support Date" value={viewAsset.end_of_support_date || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="End of Life Date" value={viewAsset.end_of_life_date || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="AMC / Warranty" value={viewAsset.amc_warranty || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="A/W Expiry Date" value={viewAsset.amc_warranty_expiry_date || "—"} type="text" className="field-readonly" readOnly />
+                <FormInput label="Critical" value={viewAsset.critical || "—"} type="text" className="field-readonly" readOnly />
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label className="field field-readonly">
+                    <span>Remarks</span>
+                    <textarea rows="3" readOnly value={viewAsset.remarks || ""} />
+                  </label>
+                </div>
+              </div>
+            </FormSection>
+          </div>
+        ) : null}
+      </Modal>
     </section>
   );
 }

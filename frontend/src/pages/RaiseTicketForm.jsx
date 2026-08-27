@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { FiSearch, FiTool } from "react-icons/fi";
 import { getDropdowns, searchInventoryUser } from "../services/inventoryService";
 import { createTicket } from "../services/ticketService";
+import Badge from "../components/ui/Badge";
+import Button from "../components/ui/Button";
+import FormInput from "../components/ui/FormInput";
+import FormSection from "../components/ui/FormSection";
+import Select from "../components/ui/Select";
 
 const initialForm = {
   title: "",
@@ -88,53 +94,186 @@ export default function RaiseTicketForm() {
     }
   };
 
-  const select = (name, value, values = []) => (
-    <select value={value} onChange={(e) => setForm((prev) => ({ ...prev, [name]: e.target.value }))}>
-      <option value="">Select {name}</option>
-      {values.map((v) => (
-        <option key={v} value={v}>
-          {v}
-        </option>
-      ))}
-    </select>
-  );
+  const handleChange = (name, value) => setForm((prev) => ({ ...prev, [name]: value }));
 
   return (
-    <section>
-      <h1>Raise Ticket Form</h1>
-      <label>User Search (name/email/phone)</label>
-      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search user" />
-      {matches.length > 0 && (
-        <div className="results">
-          {matches.map((m) => (
-            <button key={m.id} type="button" onClick={() => onSelectUser(m)}>
-              {m.asset_user} | {m.email} | {m.phone}
-            </button>
-          ))}
+    <section className="page-stack">
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">Service Desk</p>
+          <h1>Raise Ticket</h1>
+          <p>Submit a new support request. Search for your asset to auto-fill location details.</p>
         </div>
-      )}
+      </div>
 
-      <form className="grid-form" onSubmit={submit}>
-        <input placeholder="Ticket title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-        <textarea placeholder="Ticket description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-        {select("ministry", form.ministry, dropdowns.ministry || [])}
-        {select("department", form.department, dropdowns.department || [])}
-        {select("block_name", form.block_name, dropdowns.block_name || [])}
-        {select("floor", form.floor, dropdowns.floor || [])}
-        <input placeholder="Room" value={form.room} onChange={(e) => setForm({ ...form, room: e.target.value })} />
-        <input placeholder="Workstation" value={form.workstation} onChange={(e) => setForm({ ...form, workstation: e.target.value })} />
-        <input placeholder="Asset User" value={form.asset_user} onChange={(e) => setForm({ ...form, asset_user: e.target.value })} />
-        {select("division", form.division, dropdowns.division || [])}
-        {select("designation", form.designation, dropdowns.designation || [])}
-        <input placeholder="User Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-        <input placeholder="User Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-        <input placeholder="Asset Custodian" value={form.custodian} onChange={(e) => setForm({ ...form, custodian: e.target.value })} />
-        <button disabled={!canSubmit} type="submit">
-          Raise Ticket
-        </button>
-      </form>
-      {message && <p>{message}</p>}
-      {error && <p className="error">{error}</p>}
+      {message && <div className="toast" role="status">{message}</div>}
+      {error && <div className="alert alert-error">{error}</div>}
+
+      {/* User Search */}
+      <section className="filter-card" aria-label="User search">
+        <div className="filter-search">
+          <FiSearch aria-hidden="true" />
+          <input
+            placeholder="Search user by name, email, or phone..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        {matches.length > 0 && (
+          <div className="user-match-list">
+            {matches.map((m) => (
+              <button key={m.id} type="button" className="user-match-row" onClick={() => onSelectUser(m)}>
+                <strong>{m.asset_user}</strong>
+                <span>{m.email}</span>
+                <span>{m.phone || "—"}</span>
+                <Badge tone="info">{m.ministry || "—"}</Badge>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="data-card">
+        <div className="section-title">
+          <h2>Ticket Details</h2>
+        </div>
+        <form className="modal-form" onSubmit={submit}>
+          <FormSection title="Section 1: Ticket Information" description="Provide the ticket title and description">
+            <div className="form-grid-2">
+              <FormInput
+                label="Ticket Title *"
+                name="title"
+                value={form.title}
+                onChange={(e) => handleChange("title", e.target.value)}
+                type="text"
+                placeholder="Brief description of the issue"
+              />
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label className="field">
+                  <span>Ticket Description *</span>
+                  <textarea
+                    name="description"
+                    value={form.description}
+                    onChange={(e) => handleChange("description", e.target.value)}
+                    rows="4"
+                    placeholder="Provide detailed description of the issue or request"
+                  />
+                </label>
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection title="Section 2: Asset & Location" description="Asset user details are auto-filled when you search and select a user">
+            <div className="form-grid-4">
+              <FormInput
+                label="Asset User *"
+                name="asset_user"
+                value={form.asset_user}
+                onChange={(e) => handleChange("asset_user", e.target.value)}
+                type="text"
+                placeholder="Name of the asset user"
+              />
+              <FormInput
+                label="User Email *"
+                name="email"
+                value={form.email}
+                onChange={(e) => handleChange("email", e.target.value)}
+                type="email"
+                placeholder="User email address"
+              />
+              <FormInput
+                label="User Phone"
+                name="phone"
+                value={form.phone}
+                onChange={(e) => handleChange("phone", e.target.value)}
+                type="text"
+                placeholder="User phone number"
+              />
+              <FormInput
+                label="Asset Custodian"
+                name="custodian"
+                value={form.custodian}
+                onChange={(e) => handleChange("custodian", e.target.value)}
+                type="text"
+                placeholder="Custodian name"
+              />
+              <Select
+                label="Ministry"
+                name="ministry"
+                options={dropdowns.ministry || []}
+                placeholder="Select Ministry"
+                value={form.ministry}
+                onChange={(e) => handleChange("ministry", e.target.value)}
+              />
+              <Select
+                label="Department"
+                name="department"
+                options={dropdowns.department || []}
+                placeholder="Select Department"
+                value={form.department}
+                onChange={(e) => handleChange("department", e.target.value)}
+              />
+              <Select
+                label="Division"
+                name="division"
+                options={dropdowns.division || []}
+                placeholder="Select Division"
+                value={form.division}
+                onChange={(e) => handleChange("division", e.target.value)}
+              />
+              <Select
+                label="Designation"
+                name="designation"
+                options={dropdowns.designation || []}
+                placeholder="Select Designation"
+                value={form.designation}
+                onChange={(e) => handleChange("designation", e.target.value)}
+              />
+              <FormInput
+                label="Block"
+                name="block_name"
+                value={form.block_name}
+                onChange={(e) => handleChange("block_name", e.target.value)}
+                type="text"
+                placeholder="Block name"
+              />
+              <FormInput
+                label="Floor"
+                name="floor"
+                value={form.floor}
+                onChange={(e) => handleChange("floor", e.target.value)}
+                type="text"
+                placeholder="Floor number"
+              />
+              <FormInput
+                label="Room"
+                name="room"
+                value={form.room}
+                onChange={(e) => handleChange("room", e.target.value)}
+                type="text"
+                placeholder="Room number"
+              />
+              <FormInput
+                label="Workstation"
+                name="workstation"
+                value={form.workstation}
+                onChange={(e) => handleChange("workstation", e.target.value)}
+                type="text"
+                placeholder="Workstation ID"
+              />
+            </div>
+          </FormSection>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "8px" }}>
+            <Button type="button" variant="secondary" onClick={() => { setForm(initialForm); setSearch(""); }}>
+              Reset
+            </Button>
+            <Button type="submit" icon={FiTool} disabled={!canSubmit}>
+              Raise Ticket
+            </Button>
+          </div>
+        </form>
+      </section>
     </section>
   );
 }

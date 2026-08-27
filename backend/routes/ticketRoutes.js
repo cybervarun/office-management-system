@@ -56,4 +56,12 @@ router.post(
   controller.transferTicket
 );
 
+router.get("/users/search", allowRoles("Admin", "Help Desk", "IT Team", "Network Team", "Cybersecurity"), controller.searchUsers);
+
+router.delete(
+  "/:id",
+  allowRoles("Admin", "Help Desk"),
+  controller.deleteTicket
+);
+
 module.exports = router;

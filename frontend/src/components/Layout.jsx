@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   FiBell,
-  FiChevronLeft,
   FiGrid,
   FiHardDrive,
   FiLogOut,
@@ -25,7 +24,6 @@ const navItems = [
 ];
 
 export default function Layout({ onLogout, user, children }) {
-  const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
 
@@ -33,45 +31,36 @@ export default function Layout({ onLogout, user, children }) {
     setMobileOpen(false);
   }, [location.pathname]);
 
-  const shellClass = [
-    "app-shell",
-    collapsed ? "sidebar-collapsed" : "",
-    mobileOpen ? "mobile-sidebar-open" : ""
-  ]
-    .filter(Boolean)
-    .join(" ");
-
   return (
-    <div className={shellClass}>
+    <div className={`app-shell${mobileOpen ? ' mobile-sidebar-open' : ''}`}>
       <aside className="sidebar" aria-label="Primary navigation">
-        <div className="brand-block">
-          <div className="brand-mark">IT</div>
-          <div className="brand-copy">
-            <strong>Office IT</strong>
-            <span>Inventory and Service Desk</span>
-          </div>
-        </div>
-
+        <div className="sidebar-logo">OM</div>
         <nav className="sidebar-nav">
           {navItems.map((item) => (
-            <NavLink className="nav-item" end={item.to === "/"} key={item.to} title={item.label} to={item.to}>
+            <NavLink
+              className="nav-item"
+              end={item.to === "/"}
+              key={item.to}
+              title={item.label}
+              to={item.to}
+            >
               <item.icon aria-hidden="true" />
-              <span>{item.label}</span>
             </NavLink>
           ))}
         </nav>
-
+        <div className="sidebar-spacer" />
         <div className="sidebar-footer">
-          <div className="profile-card">
-            <div className="avatar">{(user?.name || "Admin").slice(0, 1).toUpperCase()}</div>
-            <div>
-              <strong>{user?.name || "System Admin"}</strong>
-              <span>{user?.role || "Administrator"}</span>
-            </div>
+          <div className="sidebar-avatar" title={user?.name || "Admin"}>
+            {(user?.name || "A").slice(0, 1).toUpperCase()}
           </div>
-          <Button icon={FiLogOut} onClick={onLogout} variant="sidebar">
-            Logout
-          </Button>
+          <button
+            className="nav-item"
+            title="Log out"
+            onClick={onLogout}
+            style={{ color: "var(--slate)", background: "none", border: "none", cursor: "pointer", width: 40, height: 40, borderRadius: 8, display: "grid", placeItems: "center" }}
+          >
+            <FiLogOut style={{ width: 18, height: 18 }} />
+          </button>
         </div>
       </aside>
 
@@ -79,48 +68,24 @@ export default function Layout({ onLogout, user, children }) {
 
       <div className="workspace">
         <header className="topbar">
-          <div className="topbar-left">
-            <Button
-              aria-label="Open navigation"
-              className="mobile-menu-button"
-              icon={FiMenu}
-              onClick={() => setMobileOpen(true)}
-              size="icon"
-              variant="ghost"
-            >
-              Menu
-            </Button>
-            <Button
-              aria-label="Collapse sidebar"
-              className="desktop-collapse-button"
-              icon={collapsed ? FiMenu : FiChevronLeft}
-              onClick={() => setCollapsed((value) => !value)}
-              size="icon"
-              variant="ghost"
-            >
-              Toggle
-            </Button>
-            <div className="topbar-title">
-              <span>Government IT Operations</span>
-              <strong>Asset and Ticket Management</strong>
-            </div>
-          </div>
-
-          <label className="global-search" htmlFor="global-search">
+          <button
+            aria-label="Open navigation"
+            className="mobile-menu-button"
+            onClick={() => setMobileOpen(true)}
+          >
+            <FiMenu />
+          </button>
+          <div className="topbar-search">
             <FiSearch aria-hidden="true" />
-            <input id="global-search" placeholder="Search assets, tickets, users" />
-          </label>
-
-          <div className="topbar-actions">
-            <Button aria-label="Notifications" className="notification-button" icon={FiBell} size="icon" variant="ghost">
-              Notifications
-            </Button>
-            <div className="topbar-profile">
-              <div className="avatar avatar-small">{(user?.name || "A").slice(0, 1).toUpperCase()}</div>
-              <div>
-                <strong>{user?.name || "Admin"}</strong>
-                <span>{user?.role || "Admin"}</span>
-              </div>
+            <input type="text" placeholder="Search assets, tickets, users… (Ctrl+K)" />
+          </div>
+          <div className="topbar-right">
+            <button className="topbar-btn" title="Notifications">
+              <FiBell />
+              <span className="dot" />
+            </button>
+            <div className="topbar-avatar" title={user?.name || "Admin"}>
+              {(user?.name || "A").slice(0, 2).toUpperCase()}
             </div>
           </div>
         </header>

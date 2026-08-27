@@ -35,6 +35,19 @@ router.patch(
 );
 
 router.patch(
+  "/:id",
+  allowRoles("Admin"),
+  [
+    body("name").optional().isLength({ max: 255 }),
+    body("email").optional().isEmail({ require_tld: false }),
+    body("phone").optional().isLength({ max: 30 }),
+    body("role").optional().isIn(ROLES)
+  ],
+  validate,
+  controller.editUser
+);
+
+router.patch(
   "/:id/password",
   allowRoles("Admin"),
   [body("password").isLength({ min: 8 })],
