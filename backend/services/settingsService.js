@@ -1,5 +1,5 @@
 const { executeQuery } = require("../config/db");
-const { ROLES, TEAMS } = require("../models/constants");
+const { ROLES, TEAMS } = require("../utils/constants");
 
 const getSettings = async () => {
   const roleStats = await executeQuery(`

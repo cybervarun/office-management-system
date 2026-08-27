@@ -94,13 +94,13 @@ Office-management-system-Government-node/
 ├── backend/
 │   ├── app.js                  # Express entry point
 │   ├── config/
-│   │   └── db.js              # MSSQL connection pool
+│   │   └── db.js              # PostgreSQL connection pool
 │   ├── controllers/           # Thin request handlers
 │   ├── middlewares/           # auth, rbac, validate, error handler
-│   ├── models/constants.js    # ROLES, TEAMS enums
+│   ├── utils/constants.js     # ROLES, TEAMS enums
 │   ├── routes/                # Express routers per domain
 │   ├── scripts/
-│   │   ├── schema.sql         # DDL
+│   │   ├── migrate_to_postgres.js  # Schema migration runner
 │   │   ├── apply_schema.js    # Migration runner
 │   │   └── create_admin.js    # Seed script
 │   ├── services/              # Business logic + DB queries

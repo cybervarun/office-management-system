@@ -4,7 +4,7 @@ const controller = require("../controllers/ticketController");
 const auth = require("../middlewares/auth");
 const allowRoles = require("../middlewares/rbac");
 const validate = require("../middlewares/validate");
-const { TEAMS } = require("../models/constants");
+const { TEAMS } = require("../utils/constants");
 
 const router = express.Router();
 

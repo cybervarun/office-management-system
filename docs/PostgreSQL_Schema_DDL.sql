@@ -2,7 +2,7 @@
 -- IT Asset & Ticket Management System
 -- PostgreSQL Schema DDL
 -- Generated: 2026-08-25
--- Source:  backend/scripts/schema.sql  (MSSQL → PG migration)
+-- Migrated from MSSQL (backend/scripts/schema.sql) → PostgreSQL
 -- ============================================================
 
 -- 1. Custom Sequences

@@ -4,7 +4,7 @@ const controller = require("../controllers/userController");
 const auth = require("../middlewares/auth");
 const allowRoles = require("../middlewares/rbac");
 const validate = require("../middlewares/validate");
-const { ROLES } = require("../models/constants");
+const { ROLES } = require("../utils/constants");
 
 const router = express.Router();
 

@@ -2,7 +2,7 @@
 
 > **Purpose:** Authoritative schema reference for the IT Asset & Ticket Management System.
 > **Source:** `docs/PostgreSQL_Schema_DDL.sql` (mirrors this document; always stay in sync)
-> **Note:** This is the *target* PostgreSQL schema. The live MSSQL source is in `backend/scripts/schema.sql`.
+> **Source of truth:** `docs/PostgreSQL_Schema_DDL.sql` — always keep this document in sync.
 
 ---
 
