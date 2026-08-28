@@ -4,6 +4,38 @@ All notable changes to the IT Asset & Ticket Management System.
 
 ---
 
+## [Unreleased] — Day 9 (2026-08-28)
+
+### Changed
+- `.gitignore` — expanded 56 → 105 lines: added patterns for screenshots (`*.png|*.jpg|*.jpeg|*.gif|*.webp|*.svg`), audit/test/debug scripts (`frontend/scripts/audit-*.js|mjs`, `test-*.js|mjs`, `debug-*.js|mjs`), agent logs (`\.remember/`, `.claude/`, `.claude-flow/`, `.swarm/`, `.agents/`, `.ruflo/`, `.ruvector/`, `.rvfr/`), source maps (`*.js.map`, `*.mjs.map`), generated declarations (`*.d.ts`), Playwright artifacts (`playwright-report/`, `test-results/`)
+- Added `.gitignore` note: E2E test scripts must not contain hardcoded credentials
+
+### Removed
+- `frontend/e2e-test.cjs` — hardcoded password `SecureAdmin@2024!`
+- `frontend/scripts/final-test.cjs` — hardcoded password `Admin@12345678`
+- `frontend/scripts/test-e2e-keys.cjs` — hardcoded JWT secret
+- `frontend/scripts/test-e2e.cjs` — hardcoded JWT secret
+- `frontend/scripts/test-e2e-full.cjs` — hardcoded JWT secret
+- `backend/scripts/e2e-test.js` — hardcoded password `Admin@12345678`
+- `backend/scripts/test-api.js` — hardcoded password `Admin@12345678`
+- `AGENTS_NOTES.md` — obsolete internal dev log
+- `GAP_ANALYSIS_REPORT.md` — obsolete internal audit report
+- `AI Project Template.code-workspace` — machine-specific VS Code paths (Windows user `cyclo`)
+- `package-lock.json` (root) — empty lockfile (0 top-level deps, only transitive)
+
+### Security
+- **Removed 7 files with hardcoded credentials** — all e2e/test scripts contained plaintext passwords or JWT secrets that would have been exposed in git history and on GitHub
+- **Repository size reduced**: 129 → 118 tracked files
+
+### Verified
+- `git status`: clean (0 untracked, 0 modified)
+- `git ls-files`: 118 tracked files
+- Tests: 242/242 passing
+- Build: clean
+- Remote: force-pushed to `https://github.com/cybervarun/office-management-system`
+
+---
+
 ## [Unreleased] — Day 8 (2026-08-27)
 
 ### Added
