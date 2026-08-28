@@ -102,3 +102,10 @@ docker-compose.override.yml
 # Obsidian vault (local notes, not source)
 # Uncomment if using Obsidian for project notes:
 # .obsidian/
+
+# Internal working files — not for external contributors
+AGENTS.md
+CHECKPOINT.md
+
+# Internal docs — keep locally for AI context but exclude from public repo
+docs/
