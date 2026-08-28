@@ -41,18 +41,11 @@ Government office IT asset lifecycle management and help-desk ticketing platform
 │   │   ├── services/       # API client wrappers (axios)
 │   │   └── utils/
 │   └── vite.config.js
-├── docs/                   # Documentation
+├── docs/                   # Technical documentation (core refs only — internal PRDs/BRD kept locally)
 │   ├── ARCHITECTURE.md     # System architecture, middleware stack, security
 │   ├── DATA_MODEL.md       # PostgreSQL schema reference (5 tables)
 │   ├── PostgreSQL_Schema_DDL.sql  # Authoritative DDL — run to create DB
-│   ├── Local_Host_Setup_Guide.md  # Step-by-step local setup
 │   ├── API_Documentation.md    # REST API reference
-│   ├── BRD.md              # Business Requirements Document
-│   ├── Project_Charter.md  # Project charter
-│   ├── User_Admin_Guide.md # End-user and admin guide (PostgreSQL)
-│   ├── CHANGELOG.md        # Full change history
-│   ├── PRD_v2.md           # Master product requirements
-│   ├── FLOWS/              # User flows, gap reports, PRD validation
 │   └── security/           # RBAC audit report
 ├── tests/                  # Integration + RBAC test suites
 ├── jest.config.js          # Jest configuration
@@ -187,21 +180,14 @@ Current: **242/242** integration tests passing · **94/94** RBAC tests passing.
 
 ## Documentation
 
+> **Note:** Core technical documentation is available in the `/docs` folder below. Internal product requirements, BRDs, and working notes are kept locally and not tracked in this repository.
+
 | Document | Purpose |
 |----------|---------|
 | `docs/ARCHITECTURE.md` | System architecture, middleware stack, security |
 | `docs/DATA_MODEL.md` | PostgreSQL schema reference |
 | `docs/PostgreSQL_Schema_DDL.sql` | Authoritative DDL — create the database |
-| `docs/Local_Host_Setup_Guide.md` | Step-by-step local setup |
 | `docs/API_Documentation.md` | REST API reference |
-| `docs/User_Admin_Guide.md` | End-user and admin guide |
-| `docs/BRD.md` | Business Requirements Document |
-| `docs/Project_Charter.md` | Project charter |
-| `docs/CHANGELOG.md` | Full change history |
-| `docs/PRD_v2.md` | Master product requirements |
-| `docs/FLOWS/user-flows.md` | 8 user flows with Mermaid diagrams |
-| `docs/FLOWS/UI_GAP_REPORT.md` | 7 open UI gaps tracked |
-| `docs/FLOWS/PRD_VALIDATION_REPORT.md` | PRD coverage: 20/29 criteria met |
 | `docs/security/RBAC_AUDIT.md` | RBAC security audit (11 findings) |
 
 ---

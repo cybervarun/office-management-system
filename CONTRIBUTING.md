@@ -9,7 +9,6 @@ Thank you for your interest in contributing. This document covers the developmen
 - [docs/DATA_MODEL.md](./docs/DATA_MODEL.md) — Database schema reference
 - [docs/PostgreSQL_Schema_DDL.sql](./docs/PostgreSQL_Schema_DDL.sql) — Authoritative DDL
 - [docs/API_Documentation.md](./docs/API_Documentation.md) — REST API reference
-- [docs/User_Admin_Guide.md](./docs/User_Admin_Guide.md) — End-user & admin guide
 - [docs/security/RBAC_AUDIT.md](./docs/security/RBAC_AUDIT.md) — Security audit findings
 
 ---
@@ -123,7 +122,7 @@ At least one of `serial_number` or `mac_address` is required for asset creation.
 
 ### 1. Check the PRD
 
-Read `docs/PRD_v2.md` first. Do not implement features outside the PRD without product owner approval.
+Read `docs/PRD_v2.md` first (available locally). Do not implement features outside the PRD without product owner approval.
 
 ### 2. Backend Changes
 
@@ -232,4 +231,4 @@ See [docs/security/RBAC_AUDIT.md](./docs/security/RBAC_AUDIT.md) for the full au
 | `frontend/src/hooks/` | useAuth for token management |
 | `frontend/src/components/` | Shared UI components |
 | `tests/integration/` | 8 test suites, 242 tests |
-| `docs/` | Architecture, schema, API, setup guides |
+| `docs/` | Architecture, schema, API, security audit (core technical references) |
