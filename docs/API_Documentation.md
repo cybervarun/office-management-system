@@ -87,7 +87,7 @@ Public endpoint. Returns JWT token and user profile.
 ```json
 {
   "email": "admin@local",
-  "password": "SecureAdmin@2024!"
+  "password": "YOUR_ADMIN_PASSWORD_HERE"
 }
 ```
 
@@ -166,7 +166,7 @@ Public endpoint. Returns JWT token and user profile.
   "email": "rahul.sharma@office.gov.in",
   "phone": "+91-9876543210",
   "role": "IT Team",
-  "password": "SecureAdmin@2024!"
+  "password": "YOUR_ADMIN_PASSWORD_HERE"
 }
 ```
 

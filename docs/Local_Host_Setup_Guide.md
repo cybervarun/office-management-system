@@ -258,7 +258,7 @@ npm run seed-admin
 
 This creates a default admin account:
 - **Email:** `admin@local`
-- **Password:** `SecureAdmin@2024!` (or a one-time password if using `--reset`)
+- **Password:** `YOUR_ADMIN_PASSWORD_HERE` (or a one-time password if using `--reset`)
 
 You will use these credentials to log in through the browser.
 
@@ -267,7 +267,7 @@ You will use these credentials to log in through the browser.
 ## 9. Verify Everything Works
 
 1. Open **http://localhost:5173** in your browser.
-2. Log in with `admin@local` / `SecureAdmin@2024!`.
+2. Log in with `admin@local` / `YOUR_ADMIN_PASSWORD_HERE`.
 3. You should see the **Dashboard** page.
 4. Try navigating to different sections:
    - **Inventory** — add an item to confirm database writes work.
