@@ -93,6 +93,9 @@ frontend/scripts/debug-*.mjs
 playwright-report/
 test-results/
 
+# NOTE: E2E test scripts must NOT contain hardcoded passwords.
+# Use process.env or .env.example placeholders instead.
+
 # Docker
 docker-compose.override.yml
 
