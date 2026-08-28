@@ -1,93 +1,104 @@
-# Checkpoint 2026-08-28 — .gitignore Audit & Cleanup
+# Checkpoint 2026-08-28 — GitHub Upload & Project Cleanup
 
 ## Session Summary
 
-Completed comprehensive .gitignore audit for the project at `D:\App\Inventory_App_Git\Office-management-system-Government-node`. Identified and addressed all categories of files that should not be committed to GitHub.
+Completed full GitHub upload of the clean project to `https://github.com/cybervarun/office-management-system.git`. Previous remote (`office-management-system-government-node`) had stale/incorrect content. Target repo now has the complete, clean project.
 
 ---
 
-## What Was Done
+## Task 1: Project File Audit ✅
 
-### 1. git status Scan
+### Files to EXCLUDE (now properly ignored)
+| Category | Pattern |
+|----------|---------|
+| Screenshots | `*.png`, `*.jpg`, `*.jpeg`, `*.gif`, `*.webp`, `*.svg` |
+| Audit scripts | `frontend/scripts/audit-*.js`, `audit-*.mjs` |
+| Test scripts | `frontend/scripts/test-*.js`, `test-*.mjs` |
+| Debug scripts | `frontend/scripts/debug-*.js`, `debug-*.mjs` |
+| Generated reports | `frontend/settings-audit-report.json` |
+| Agent logs | `.remember/logs/*.log`, `.remember/tmp/` |
+| Agent memory | `.claude/`, `.claude-flow/`, `.swarm/`, `.agents/`, `.ruflo/`, `.ruvector/`, `.rvfr/` |
+| Generated maps | `*.js.map`, `*.mjs.map`, `*.d.ts` |
+| Test results | `frontend/test-results/`, `backend/test-results/`, `playwright-report/` |
+| Temp files | `*.tmp`, `*.temp` |
+| Environment | `.env`, `.env.local`, `.env.production` |
+
+### Files INCLUDED (correctly tracked — 129 files)
+- `backend/` — all source, controllers, services, routes, middlewares, scripts
+- `frontend/src/` — all React components, pages, hooks, services, styles
+- `docs/` — full documentation (ARCHITECTURE, DATA_MODEL, PRD, FLOWS, security)
+- `tests/` — 242 integration tests (8 suites)
+- Config files — `.gitignore`, `jest.config.js`, `package.json`, etc.
+
+---
+
+## Task 2: GitHub Repository Upload ✅
+
+### Before
+- **Remote**: `office-management-system-government-node` (redirected/moved)
+- **Target repo `office-management-system`**: Had stale content (AI/ agents, old backend structure, `.docx` file, incomplete docs)
+- **Local uncommitted changes**: 7 files (CSS fixes, settings JWT fix, .gitignore update)
+
+### Actions Taken
+1. Committed all local changes: `1268ad5` — "Fix: CSS grid layout, mobile scrim, settings JWT parsing; update .gitignore"
+2. Updated remote URL to: `https://github.com/cybervarun/office-management-system.git`
+3. Force-pushed: `git push --force origin main` → `8269f4c..1268ad5 main -> main`
+4. Verified: 129 files pushed, no sensitive files, all commits intact
+
+### After
+- **Remote**: `https://github.com/cybervarun/office-management-system.git` ✅
+- **Latest commit**: `1268ad5` — Fix: CSS grid layout, mobile scrim, settings JWT parsing; update .gitignore
+- **Files**: 129 tracked, 0 untracked
+- **Size**: 97 KB on GitHub
+- **Status**: Public repo, main branch
+
+---
+
+## Verification
+
 ```
-git status --short → 6 modified + 14 untracked files
-```
-**Modified (from prior sessions):**
-- `.gitignore` ← this session
-- `CHECKPOINT.md` ← this session
-- `frontend/src/App.jsx` ← CSS grid fix
-- `frontend/src/hooks/useAuth.js` ← settings JWT fix
-- `frontend/src/pages/Settings.jsx` ← settings JWT fix
-- `frontend/src/services/api.js` ← settings JWT fix
-- `frontend/src/styles.css` ← mobile-scrim + grid-column fixes
-
-**Untracked (now ignored):**
-- `frontend/debug-dashboard.png` — screenshot artifact
-- `frontend/layout-fix-64x1216.png` — layout verification screenshot
-- `frontend/scripts/audit-settings.js` — temp audit script
-- `frontend/scripts/audit-settings.mjs` — temp audit script (ESM)
-- `frontend/settings-audit-report.json` — generated report
-- `.remember/logs/` — 80+ autonomous agent log files
-- `.remember/tmp/` — temp files
-
-### 2. .gitignore Updated
-Added the following patterns:
-- `*.png`, `*.jpg`, `*.jpeg`, `*.gif`, `*.webp`, `*.svg` — all screenshot/image artifacts
-- `frontend/settings-audit-report.json` — generated report
-- `frontend/scripts/audit-*.js` / `audit-*.mjs` — temporary audit scripts
-- `frontend/scripts/test-*.js` / `test-*.mjs` — temporary test scripts
-- `frontend/scripts/debug-*.js` / `debug-*.mjs` — temporary debug scripts
-- `.remember/` — autonomous agent memory and logs directory
-- `.claude/`, `.claude-flow/`, `.claude_desktop/` — Claude Code project-local artifacts
-- `.swarm/`, `.agents/` — Ruflo swarm/agent artifacts
-- `.ruflo/`, `.ruvector/`, `.rvfr/` — Ruflo vector DB artifacts
-- `*.js.map`, `*.mjs.map` — generated source maps
-- `*.d.ts` — generated TypeScript declarations
-- `playwright-report/`, `test-results/` — Playwright artifacts
-- `docker-compose.override.yml` — Docker override
-
-Removed duplicate `Thumbs.db` entry.
-
-### 3. Verification
-```
-✅ git status --short → 6 modified, 0 untracked
-✅ Vite build: 123 modules, 0 errors, 1.67s
-✅ Tests: 242 passed, 242 total, 8 suites passed
-✅ All screenshot/artifact files now ignored
+✅ Build:     123 modules, 0 errors, 1.60s
+✅ Tests:     242 passed, 242 total, 8 suites
+✅ git status: clean (0 untracked, 0 modified)
+✅ Remote:    https://github.com/cybervarun/office-management-system
+✅ Push:      8269f4c..1268ad5 main -> main
 ```
 
 ---
 
-## What Is NOT Committed (Correctly Ignored)
+## CSS Bugs Fixed This Session (Background Context)
 
-| Category | Examples |
-|----------|----------|
-| **Screenshots** | `debug-dashboard.png`, `layout-fix-64x1216.png` |
-| **Audit scripts** | `scripts/audit-settings.js`, `audit-settings.mjs` |
-| **Generated reports** | `settings-audit-report.json` |
-| **Agent logs** | `.remember/logs/*.log` (80+ files) |
-| **Agent memory** | `.remember/tmp/` |
-| **AI artifacts** | `.claude/`, `.ruflo/`, `.swarm/`, `.agents/`, `.ruvector/` |
+### Bug 1: Reports page blank / white page
+**Root cause**: `.workspace` missing `grid-column: 2` in `.app-shell` CSS Grid.
+**Fix**: Added `grid-column: 2` to `.workspace` in `frontend/src/styles.css`.
 
-## What IS Committed (Correctly Tracked)
+### Bug 2: 800px blank space on all pages
+**Root cause**: `.mobile-scrim { display: none }` only inside `@media (max-width: 900px)`.
+On desktop the element had no rules → default `display: block` → occupied grid row1 col2, pushing workspace to row2.
+**Fix**: Moved global `display: none` rule outside all media queries; kept `display: block` override only inside `@media` for `.mobile-sidebar-open`.
 
-| Category | Files |
-|----------|-------|
-| **Source code** | `frontend/src/**`, `backend/**` |
-| **Documentation** | `docs/**`, `README.md`, `CHECKPOINT.md` |
-| **Config** | `.gitignore`, `jest.config.js`, `jest-setup.js` |
-| **Package files** | `package.json`, `frontend/package.json`, `backend/package.json` |
-| **Schema** | `docs/PostgreSQL_Schema_DDL.sql` |
+### Bug 3: Settings page not loading (JWT parse failure)
+**Root cause**: `safeParseStorage` called `JSON.parse()` on raw JWT string → always threw → `useAuth` returned false.
+**Fix**: Nested try/catch in `useAuth.js` — try JSON.parse first, fall back to raw string. Simplified `App.jsx` to conditional render.
 
 ---
 
-## Key Technical Notes
+## Open Items (carried forward from RBAC Audit)
 
-- **Root cause of blank space on all pages** was the mobile scrim rendering as block on desktop — fixed with global `display: none` rule for `.mobile-scrim`
-- **Root cause of Reports blank page** was `.workspace` missing `grid-column: 2` — fixed with explicit CSS Grid placement
-- Both bugs were latent CSS Grid auto-placement issues — elements without explicit grid placement compete for cells
-- The `.gitignore` previously only had 56 lines with basic coverage; now comprehensive at 72 lines covering all artifact categories
+- [ ] 3.3 MEDIUM: Add rate limiting on `/api/auth/login`
+- [ ] 3.6 MEDIUM: Confirm with product owner whether Network Team/Cybersecurity should have Dashboard/Reports access
+- [ ] 3.11 MEDIUM: Add DB lookup after JWT verify to confirm user exists and is active
+- [ ] 3.8 LOW: Add 403 audit logging middleware
+
+## Open UI Gaps (carried forward)
+
+- Gap 4: Ticket detail modal history log display
+- Gap 5: Asset edit button wiring
+- Gap 6: CSV import per-row error feedback
+- Gap 7: No "My Tickets" view for general staff
+- Gap 8: Audit trail report page
+- Gap 9: Mobile hamburger menu
 
 ---
 
-*Checkpoint created: 2026-08-28 · .gitignore audit complete · 0 untracked files after cleanup · 242/242 tests green*
+*Checkpoint created: 2026-08-28 · GitHub upload complete · 129 files clean · 242/242 tests green · 3 CSS bugs fixed*
