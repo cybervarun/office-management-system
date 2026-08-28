@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FiSave, FiBell, FiShield, FiSettings } from "react-icons/fi";
+import { FiSave, FiBell, FiShield, FiSettings, FiRefreshCw } from "react-icons/fi";
 import { getSettings, updateNotifications } from "../services/settingsService";
 
 export default function Settings() {
@@ -8,6 +8,7 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [notifications, setNotifications] = useState({
     emailAlerts: true,
@@ -17,14 +18,27 @@ export default function Settings() {
     securityAlerts: true
   });
 
+  const loadSettings = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await getSettings();
+      setData(res);
+      setNotifications(prev => ({ ...prev, ...res.notifications }));
+    } catch (err) {
+      const msg = err.response?.data?.error || err.message || "Failed to load settings";
+      if (err.response?.status === 401) {
+        window.location.href = "/login";
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    getSettings()
-      .then(res => {
-        setData(res);
-        setNotifications(prev => ({ ...prev, ...res.notifications }));
-      })
-      .catch(err => setError(err.message || "Failed to load settings"))
-      .finally(() => setLoading(false));
+    loadSettings();
   }, []);
 
   const handleToggle = (key) => {
@@ -38,11 +52,18 @@ export default function Settings() {
     try {
       await updateNotifications(notifications);
       setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
     } catch (err) {
-      setError(err.message || "Failed to save settings");
+      setError(err.response?.data?.error || err.message || "Failed to save settings");
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadSettings();
+    setRefreshing(false);
   };
 
   if (loading) {
@@ -50,6 +71,23 @@ export default function Settings() {
       <section className="page-stack">
         <div className="page-heading"><h1>Settings</h1></div>
         <div className="loading-state"><div className="spinner" /></div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="page-stack">
+        <div className="page-heading"><h1>Settings</h1></div>
+        <div className="alert alert-error">{error}</div>
+        <div style={{ padding: "18px" }}>
+          <p style={{ color: "var(--slate-dim)", fontSize: 13 }}>
+            Your session may have expired.{" "}
+            <a href="/login" style={{ color: "var(--primary)", cursor: "pointer" }}>
+              Sign in again
+            </a>
+          </p>
+        </div>
       </section>
     );
   }
@@ -69,6 +107,16 @@ export default function Settings() {
           <p className="eyebrow">Administration</p>
           <h1>Settings</h1>
         </div>
+        <button
+          className="btn btn-ghost"
+          onClick={handleRefresh}
+          disabled={refreshing || loading}
+          title="Refresh settings"
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px" }}
+        >
+          <FiRefreshCw style={{ fontSize: 13, transform: refreshing ? "rotate(180deg)" : "none", transition: "transform 0.3s" }} />
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}

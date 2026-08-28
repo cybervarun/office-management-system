@@ -3,7 +3,12 @@ import { useMemo, useState } from "react";
 function safeParseStorage(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
+    if (!raw) return fallback;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw; // store plain strings (e.g., JWT tokens) as-is
+    }
   } catch {
     return fallback;
   }

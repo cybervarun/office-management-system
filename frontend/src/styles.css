@@ -23,6 +23,8 @@
   --slate: #94a3b8;
   --slate-dim: #64748b;
   --text: #0f172a;
+  --primary: #00d4ff;
+  --primary-dim: rgba(0, 212, 255, 0.12);
 
   /* ── Typography ── */
   --font-display: 'Space Grotesk', sans-serif;
@@ -185,6 +187,15 @@ a { text-decoration: none; color: inherit; }
   cursor: pointer;
 }
 
+/* ─── MOBILE SCRIM ─── */
+.mobile-scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(6, 11, 20, 0.5);
+}
+
 /* ─── WORKSPACE ─── */
 .workspace {
   min-width: 0;
@@ -192,6 +203,7 @@ a { text-decoration: none; color: inherit; }
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  grid-column: 2;
 }
 
 /* ─── TOPBAR ─── */
@@ -1144,14 +1156,6 @@ textarea { resize: vertical; min-height: 80px; }
 
   .mobile-sidebar-open .sidebar {
     transform: translateX(0);
-  }
-
-  .mobile-scrim {
-    display: none;
-    position: fixed;
-    inset: 0;
-    z-index: 70;
-    background: rgba(6, 11, 20, 0.5);
   }
 
   .mobile-sidebar-open .mobile-scrim {

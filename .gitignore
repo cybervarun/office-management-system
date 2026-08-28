@@ -52,5 +52,50 @@ frontend/vite.out.log
 frontend/test-results/
 backend/test-results/
 
-# OS / IDE
-Thumbs.db
+# Screenshot / debug artifacts
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+
+# Generated audit/report files
+frontend/settings-audit-report.json
+frontend/scripts/audit-*.js
+frontend/scripts/audit-*.mjs
+frontend/scripts/test-*.js
+frontend/scripts/test-*.mjs
+frontend/scripts/debug-*.js
+frontend/scripts/debug-*.mjs
+
+# Autonomous agent memory / logs
+.remember/
+
+# Claude Code AI artifacts (project-local)
+.claude/
+.claude-flow/
+.claude_desktop/
+.swarm/
+.agents/
+.ruflo/
+.ruvector/
+.rvfr/
+
+# Vite/ESBuild source maps (generated)
+*.js.map
+*.mjs.map
+
+# TypeScript declarations (generated)
+*.d.ts
+
+# Playwright artifacts
+playwright-report/
+test-results/
+
+# Docker
+docker-compose.override.yml
+
+# Obsidian vault (local notes, not source)
+# Uncomment if using Obsidian for project notes:
+# .obsidian/
